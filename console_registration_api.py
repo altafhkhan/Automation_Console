@@ -30,12 +30,14 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 import hashlib
+import json
 import os
 import secrets
 
 import asyncpg
 import bcrypt
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Response
+import stripe
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Header, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -45,6 +47,15 @@ import qbo_client
 from console_config import CONSOLE_BASE_URL
 from db import create_pool
 from qbo_config import qbo_configured
+from stripe_config import (
+    RENEWAL_TERM_DAYS,
+    STRIPE_PRICE_ID,
+    STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET,
+    stripe_configured,
+)
+
+stripe.api_key = STRIPE_SECRET_KEY  # no-op until deploy/.env sets a real key
 
 DEMO_PERIOD_DAYS = 7
 OWNER_NOTIFICATION_EMAIL = "zoya@yourcompany.com"  # TODO: pull from real config/secrets, not hardcoded
@@ -730,20 +741,83 @@ async def outbox_ack(
 
 
 @app.post("/v1/billing/webhook")
-async def billing_webhook(payload: dict[str, Any], conn: asyncpg.Connection = Depends(get_db)):
-    # TODO: verify signature from the payment provider before trusting payload.
-    # TODO: map payload -> installation_id, plan, term_days, then:
-    #
-    # await conn.execute(
-    #     """
-    #     update installations
-    #     set plan = $1, payment_date = $2, license_status = 'active',
-    #         demo_end = $2 + $3::interval, renewal_reminders_sent = 0
-    #     where installation_id = $4
-    #     """,
-    #     plan, datetime.now(timezone.utc), f"{term_days} days", installation_id,
-    # )
-    raise HTTPException(501, "Wire up your payment provider's webhook shape here")
+async def billing_webhook(request: Request, conn: asyncpg.Connection = Depends(get_db)):
+    """
+    Called directly by Stripe's servers, not by the portal or admin
+    frontend — no session/API-key auth involved. Authenticity comes from
+    the signature header instead, verified against the RAW request body
+    (Stripe signs the exact bytes it sent; re-serializing parsed JSON
+    would not reproduce the same signature). Same pattern as the
+    reference implementation in ocrdocflow's billing.py.
+
+    demo_end is the one field the rest of this codebase already checks
+    for entitlement (_refresh_license_status, _entitlements_for,
+    run_license_watcher) — a Stripe payment just pushes demo_end another
+    RENEWAL_TERM_DAYS out, the same field a trial's demo_end already is,
+    rather than inventing a second "is this installation paid up" signal.
+    """
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(500, "STRIPE_WEBHOOK_SECRET not configured on the server")
+
+    raw_body = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    try:
+        stripe.Webhook.construct_event(raw_body, sig_header, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError):
+        raise HTTPException(400, "Invalid Stripe signature")
+
+    # construct_event() above only proves the payload is genuinely from
+    # Stripe — re-parsed here as a plain dict for reading, same reason
+    # ocrdocflow's webhook does this instead of using the returned
+    # StripeObject.
+    event = json.loads(raw_body)
+    event_type = event["type"]
+    data = event["data"]["object"]
+    now = datetime.now(timezone.utc)
+
+    if event_type == "checkout.session.completed":
+        installation_id = data.get("client_reference_id") or (data.get("metadata") or {}).get("installation_id")
+        if installation_id:
+            await conn.execute(
+                """
+                update installations
+                set stripe_subscription_id = $1, plan = 'paid', payment_date = $2,
+                    license_status = 'active', demo_end = $2 + $3::interval,
+                    renewal_reminders_sent = 0
+                where installation_id = $4
+                """,
+                data.get("subscription"), now, f"{RENEWAL_TERM_DAYS} days", installation_id,
+            )
+
+    elif event_type == "invoice.payment_succeeded":
+        # The first invoice on a brand-new subscription (billing_reason
+        # "subscription_create") is already handled above by
+        # checkout.session.completed — only real renewals extend demo_end
+        # here, so a new subscription doesn't get double-extended.
+        if data.get("billing_reason") == "subscription_cycle":
+            await conn.execute(
+                """
+                update installations
+                set payment_date = $1, license_status = 'active',
+                    demo_end = $1 + $2::interval, renewal_reminders_sent = 0
+                where stripe_subscription_id = $3
+                """,
+                now, f"{RENEWAL_TERM_DAYS} days", data.get("subscription"),
+            )
+
+    elif event_type == "customer.subscription.deleted":
+        # Stripe's own retry/dunning cycle for a failed card has already
+        # played out by the time this fires — this is the final "this
+        # tenant is no longer paying" signal. Reuses the existing
+        # 'expired' status rather than a new one, so _entitlements_for's
+        # connector_should_run check (which only special-cases 'expired')
+        # doesn't need to change to recognize it.
+        await conn.execute(
+            "update installations set license_status = 'expired' where stripe_subscription_id = $1",
+            data.get("id"),
+        )
+
+    return {"status": "received"}
 
 
 # ---------------------------------------------------------------------------
@@ -1875,6 +1949,7 @@ async def portal_installations(
     rows = await conn.fetch(
         """
         select i.installation_id, i.erp_type, i.erp_version, i.license_status, i.connector_version,
+               i.plan, i.demo_end, i.payment_date,
                qc.connected_at as qbo_connected_at
         from installations i
         left join qbo_connections qc on qc.installation_id = i.installation_id
@@ -1884,6 +1959,63 @@ async def portal_installations(
         user["tenant_id"],
     )
     return [dict(r) for r in rows]
+
+
+@app.post("/v1/portal/installations/{installation_id}/billing/checkout-session")
+async def portal_billing_checkout(
+    installation_id: str,
+    user: asyncpg.Record = Depends(_require_tenant_user),
+    conn: asyncpg.Connection = Depends(get_db),
+):
+    """
+    Tenant-initiated Stripe Checkout — same shape as portal_qbo_connect():
+    this endpoint only generates a redirect URL. The actual sensitive
+    step (entering a card) happens entirely on Stripe's own hosted page,
+    never on this server, and the /v1/billing/webhook above — not this
+    endpoint's return value or the browser's success-redirect — is the
+    source of truth for whether the tenant actually ended up subscribed.
+    """
+    if not stripe_configured():
+        raise HTTPException(500, "STRIPE_SECRET_KEY/STRIPE_PRICE_ID not configured on the server")
+
+    installation_ids = await _tenant_installation_ids(conn, user["tenant_id"])
+    installation = await conn.fetchrow(
+        "select installation_id, stripe_customer_id from installations where installation_id = $1 and installation_id = any($2)",
+        installation_id, installation_ids,
+    )
+    if not installation:
+        raise HTTPException(404, "No installation with that id for your tenant")
+
+    # Reuse the same Stripe Customer across repeat/renewed checkouts for
+    # this installation, rather than creating a new one every time.
+    customer_id = installation["stripe_customer_id"]
+    if not customer_id:
+        customer = stripe.Customer.create(
+            email=user["email"],
+            metadata={"installation_id": installation_id, "tenant_id": str(user["tenant_id"])},
+        )
+        customer_id = customer.id
+        await conn.execute(
+            "update installations set stripe_customer_id = $1 where installation_id = $2",
+            customer_id, installation_id,
+        )
+
+    try:
+        session = stripe.checkout.Session.create(
+            customer=customer_id,
+            mode="subscription",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            success_url=f"{CONSOLE_BASE_URL}/portal/?billing=success",
+            cancel_url=f"{CONSOLE_BASE_URL}/portal/?billing=cancelled",
+            # Lets the webhook identify which installation this checkout
+            # belongs to without a DB lookup by customer_id.
+            client_reference_id=installation_id,
+            metadata={"installation_id": installation_id},
+        )
+    except stripe.error.StripeError:
+        raise HTTPException(502, "Could not start checkout with Stripe. Please try again.")
+
+    return {"checkout_url": session.url}
 
 
 @app.post("/v1/portal/installations/{installation_id}/qbo/connect")

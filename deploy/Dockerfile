@@ -11,6 +11,7 @@ COPY ar_agent.py .
 COPY master_agent.py .
 COPY qbo_client.py .
 COPY qbo_config.py .
+COPY stripe_config.py .
 COPY sub_agents/ sub_agents/
 COPY static/ static/
 

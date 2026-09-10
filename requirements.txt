@@ -5,3 +5,4 @@ requests
 httpx
 asyncpg
 bcrypt
+stripe
