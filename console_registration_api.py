@@ -1779,11 +1779,28 @@ async def portal_audit_log(
     user: asyncpg.Record = Depends(_require_tenant_user),
     conn: asyncpg.Connection = Depends(get_db),
 ):
+    """
+    Deliberately lighter than admin_audit_log() (2026-09-11, by request)
+    — the portal only ever showed this to look at, never to act on, so
+    it's scoped down to just human approval decisions (who approved or
+    rejected what, and when), dropping every internal agent/system
+    entry the full audit trail also carries. Every decision written by
+    portal_resolve_approval()/portal_resolve_inbox() stamps agent =
+    'tenant_portal' and a detail.resolved_by — that's the filter, not a
+    hardcoded action-name list, so it stays correct as new action types
+    are added. The unfiltered log is still there for admins.
+    """
     installation_ids = await _tenant_installation_ids(conn, user["tenant_id"])
     if not installation_ids:
         return []
     rows = await conn.fetch(
-        "select * from audit_log where installation_id = any($1) order by occurred_at desc limit $2",
+        """
+        select audit_id, installation_id, action, detail->>'resolved_by' as resolved_by, occurred_at
+        from audit_log
+        where installation_id = any($1) and agent = 'tenant_portal' and detail ? 'resolved_by'
+        order by occurred_at desc
+        limit $2
+        """,
         installation_ids, limit,
     )
     return [dict(r) for r in rows]

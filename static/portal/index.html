@@ -154,6 +154,10 @@
   <div class="toolbar">
     <button id="refreshAudit" class="secondary">Refresh</button>
   </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    Approval decisions only — who approved or rejected what, and when. The full technical log
+    stays available to your account administrator.
+  </p>
   <div id="auditTable"></div>
 </main>
 
@@ -358,13 +362,29 @@ async function loadTasks() {
   ]);
 }
 
+// Action strings look like "credit_limit_change_approved" or
+// "inbox_reply_sent" — split off the trailing outcome word rather than
+// keep a hardcoded list, so new action types still render correctly.
+function decisionParts(action) {
+  const m = action.match(/^(.*)_(approved|rejected|sent)$/);
+  if (!m) return { label: action.replace(/_/g, " "), outcome: null };
+  const label = m[1].replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  return { label, outcome: m[2] };
+}
+
+function decisionBadge(outcome) {
+  if (!outcome) return "—";
+  const cls = outcome === "sent" ? "approved" : outcome; // "sent" reuses the green "approved" styling
+  return `<span class="badge ${cls}">${outcome}</span>`;
+}
+
 async function loadAudit() {
   const rows = await api("/v1/portal/audit-log");
   document.getElementById("auditTable").innerHTML = table(rows, [
-    { label: "Agent", render: r => r.agent },
-    { label: "Action", render: r => r.action },
-    { label: "Detail", render: r => jsonDetail(r.detail) },
-    { label: "Occurred", render: r => fmtDate(r.occurred_at) },
+    { label: "Decision", render: r => decisionParts(r.action).label },
+    { label: "Outcome", render: r => decisionBadge(decisionParts(r.action).outcome) },
+    { label: "By", render: r => r.resolved_by || "—" },
+    { label: "When", render: r => fmtDate(r.occurred_at) },
   ]);
 }
 
