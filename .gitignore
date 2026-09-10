@@ -1,0 +1,15 @@
+# Real secrets — never commit. deploy/.env.example is the template;
+# the real deploy/.env (ADMIN_API_KEY, QBO_CLIENT_ID/SECRET,
+# POSTGRES_PASSWORD) only ever exists on the droplet itself.
+deploy/.env
+
+# Local tool config, not part of the project
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

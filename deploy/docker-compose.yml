@@ -1,0 +1,69 @@
+# Deploy scaffold — not production-ready. Matches the "self-hosted,
+# avoid per-execution platform costs" preference in ARCHITECTURE.md:
+# a single small VPS running the API + Postgres behind nginx, TLS via
+# Let's Encrypt.
+#
+# Requires a .env file in this directory (copy .env.example -> .env and
+# set a real POSTGRES_PASSWORD) before first run.
+#
+# Run from the deploy/ directory: docker compose up -d --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-console}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-console}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Only runs on first container creation (empty data dir) — see the
+      # note at the top of schema.sql. Editing this file later does not
+      # change an already-initialized database.
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-console}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-console}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-console}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      QBO_CLIENT_ID: ${QBO_CLIENT_ID:-}
+      QBO_CLIENT_SECRET: ${QBO_CLIENT_SECRET:-}
+      QBO_REDIRECT_URI: ${QBO_REDIRECT_URI:-https://console.qumaxa.com/v1/qbo/oauth/callback}
+      QBO_ENVIRONMENT: ${QBO_ENVIRONMENT:-sandbox}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Whole directory (not a single file) so console-ssl.conf is picked
+      # up automatically once DEPLOY.md step 5 renames it in — no compose
+      # edit needed at that point. console-ssl.conf.example is ignored by
+      # nginx's `include *.conf` glob.
+      - ./nginx:/etc/nginx/conf.d:ro
+      - certbot-webroot:/var/www/certbot:ro
+      - certbot-certs:/etc/letsencrypt:ro
+
+volumes:
+  certbot-webroot:
+  certbot-certs:
+  pgdata:

@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AR Automation Console — Your Approvals</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a22; --border: #2a2f3a; --text: #e6e8eb;
+    --muted: #8a8f9a; --accent: #4f8cff; --danger: #e5534b; --warn: #d4a72c; --ok: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  #authBar { display: flex; gap: 8px; align-items: center; }
+  input[type=password], input[type=text], input[type=email] {
+    background: #0b0d11; border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px; width: 260px;
+  }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer;
+  }
+  button.secondary { background: #2a2f3a; }
+  button.reject { background: var(--danger); }
+  button:hover { filter: brightness(1.1); }
+  #status { font-size: 12px; color: var(--muted); }
+  #status.err { color: var(--danger); }
+  #status.ok { color: var(--ok); }
+  nav {
+    display: flex; gap: 4px; padding: 10px 20px 0; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  nav button.tab {
+    background: transparent; color: var(--muted); border-radius: 6px 6px 0 0;
+    padding: 8px 16px; border: 1px solid transparent;
+  }
+  nav button.tab.active { color: var(--text); background: var(--bg); border-color: var(--border); border-bottom-color: var(--bg); }
+  main { padding: 20px; display: none; }
+  main.visible { display: block; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+  .toolbar select, .toolbar input { background: #0b0d11; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; background: #12151b; position: sticky; top: 0; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1b2028; }
+  code, .mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge.completed, .badge.active, .badge.resolved, .badge.approved { background: rgba(63,185,80,.15); color: var(--ok); }
+  .badge.needs_approval, .badge.pending, .badge.pending_activation, .badge.pending_final_demand, .badge.pending_resolution, .badge.elevated { background: rgba(212,167,44,.15); color: var(--warn); }
+  .badge.exception, .badge.expired, .badge.over_limit, .badge.sla_breached, .badge.rejected { background: rgba(229,83,75,.15); color: var(--danger); }
+  details summary { cursor: pointer; color: var(--accent); }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; font-size: 11.5px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  #loginScreen, #activateScreen { display: flex; align-items: center; justify-content: center; height: 70vh; flex-direction: column; gap: 12px; }
+  #loginScreen p, #activateScreen p { color: var(--muted); max-width: 420px; text-align: center; font-size: 13px; }
+  .inbox-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .inbox-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  .inbox-meta strong { color: var(--text); }
+  .inbox-body { background: #0b0d11; border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 160px; overflow-y: auto; color: var(--text); }
+  .inbox-reply { width: 100%; margin-top: 10px; background: #0b0d11; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; }
+  .inbox-actions { margin-top: 10px; display: flex; gap: 8px; }
+  .approval-actions { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>AR Automation Console</h1>
+    <div class="sub">Your company's own approval queue — only your team can see or act on this</div>
+  </div>
+  <div id="authBar">
+    <span id="status"></span>
+    <span id="whoami" style="color: var(--muted); font-size: 12px;"></span>
+    <button id="logoutBtn" class="secondary" style="display:none">Log out</button>
+  </div>
+</header>
+
+<div id="activateScreen" style="display:none">
+  <h2 style="margin:0">Activate your account</h2>
+  <p>Choose a password (at least 8 characters) to finish setting up your access.</p>
+  <input id="activatePassword" type="password" placeholder="New password">
+  <button id="activateBtn">Activate</button>
+</div>
+
+<div id="loginScreen">
+  <input id="emailInput" type="email" placeholder="Work email">
+  <input id="passwordInput" type="password" placeholder="Password">
+  <button id="loginBtn">Log in</button>
+  <p>Access is by invitation from your account administrator. Contact them if you don't have login details yet.</p>
+</div>
+
+<nav id="tabs" style="display:none">
+  <button class="tab active" data-tab="approvals">Approval Queue</button>
+  <button class="tab" data-tab="inbox">Customer Inbox</button>
+  <button class="tab" data-tab="tasks">Tasks</button>
+  <button class="tab" data-tab="audit">Audit Log</button>
+  <button class="tab" data-tab="reports">AR Reports</button>
+  <button class="tab" data-tab="customers">Customers &amp; Credit Limits</button>
+  <button class="tab" data-tab="integrations">Integrations</button>
+  <button class="tab" data-tab="activity">Daily Activity</button>
+</nav>
+
+<main id="approvals" class="tab-panel">
+  <div class="toolbar">
+    <select id="approvalStatusFilter">
+      <option value="pending" selected>pending</option>
+      <option value="approved">approved</option>
+      <option value="rejected">rejected</option>
+      <option value="">All statuses</option>
+    </select>
+    <button id="refreshApprovals" class="secondary">Refresh</button>
+  </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    customer_inbox_reply items don't appear here — resolve those from the Customer Inbox tab.
+  </p>
+  <div id="approvalsTable"></div>
+</main>
+
+<main id="inbox" class="tab-panel">
+  <div class="toolbar">
+    <button id="refreshInbox" class="secondary">Refresh</button>
+  </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    Only classified, non-escalated messages appear here. Escalated or unclassifiable messages
+    need a human to handle directly outside this system — see the Tasks tab for those.
+  </p>
+  <div id="inboxList"></div>
+</main>
+
+<main id="tasks" class="tab-panel">
+  <div class="toolbar">
+    <select id="taskStatusFilter">
+      <option value="">All statuses</option>
+      <option value="pending">pending</option>
+      <option value="needs_approval">needs_approval</option>
+      <option value="completed">completed</option>
+      <option value="exception">exception</option>
+    </select>
+    <button id="refreshTasks" class="secondary">Refresh</button>
+  </div>
+  <div id="tasksTable"></div>
+</main>
+
+<main id="audit" class="tab-panel">
+  <div class="toolbar">
+    <button id="refreshAudit" class="secondary">Refresh</button>
+  </div>
+  <div id="auditTable"></div>
+</main>
+
+<main id="reports" class="tab-panel">
+  <div class="toolbar">
+    <button id="refreshReports" class="secondary">Refresh</button>
+  </div>
+  <div id="reportsTable"></div>
+</main>
+
+<main id="customers" class="tab-panel">
+  <div class="toolbar">
+    <button id="refreshCustomers" class="secondary">Refresh</button>
+  </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    Requesting a new limit doesn't set it directly — it creates a real approval request.
+    Check the Approval Queue tab to see it, and it only takes effect once approved.
+  </p>
+  <div id="customersTable"></div>
+</main>
+
+<main id="integrations" class="tab-panel">
+  <div class="toolbar">
+    <button id="refreshIntegrations" class="secondary">Refresh</button>
+  </div>
+  <div id="integrationsTable"></div>
+</main>
+
+<main id="activity" class="tab-panel">
+  <div class="toolbar">
+    <input id="activityDaysInput" type="number" min="1" max="365" value="30" style="width:80px" title="Days back">
+    <button id="refreshActivity" class="secondary">Refresh</button>
+  </div>
+  <p style="color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    How much your automation actually did each day, by category — one column per sub-agent.
+    Hover a number for its status breakdown (completed, needs approval, exception, pending).
+  </p>
+  <div id="activityTable"></div>
+</main>
+
+<script>
+let currentEmail = "";
+
+function fmtDate(s) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return d.toLocaleString();
+}
+
+function badge(value) {
+  if (value === null || value === undefined) return "—";
+  const cls = String(value).toLowerCase();
+  return `<span class="badge ${cls}">${value}</span>`;
+}
+
+function jsonDetail(obj) {
+  if (obj === null || obj === undefined) return "—";
+  const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+  return `<details><summary>view</summary><pre>${escapeHtml(text)}</pre></details>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function shortId(id) {
+  if (!id) return "—";
+  return `<span class="mono" title="${id}">${String(id).slice(0, 8)}</span>`;
+}
+
+async function api(path, options) {
+  const opts = options || {};
+  const headers = {};
+  if (opts.body) headers["Content-Type"] = "application/json";
+  const resp = await fetch(path, { method: opts.method || "GET", headers, body: opts.body, credentials: "include" });
+  if (resp.status === 401) {
+    setStatus("Session expired — please log in again", true);
+    showLogin();
+    throw new Error("unauthorized");
+  }
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${await resp.text()}`);
+  }
+  return resp.json();
+}
+
+function setStatus(text, isErr) {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  el.className = isErr ? "err" : "ok";
+}
+
+function table(rows, columns) {
+  if (!rows.length) return `<div class="empty">No rows.</div>`;
+  const head = columns.map(c => `<th>${c.label}</th>`).join("");
+  const body = rows.map(r => `<tr>${columns.map(c => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function loadApprovals() {
+  const status = document.getElementById("approvalStatusFilter").value;
+  const rows = await api("/v1/portal/approval-queue?" + new URLSearchParams(status ? { status } : {}));
+  document.getElementById("approvalsTable").innerHTML = table(rows, [
+    { label: "Type", render: r => r.action_type },
+    { label: "Amount", render: r => r.amount != null ? `$${Number(r.amount).toFixed(2)}` : "—" },
+    { label: "Approver", render: r => r.approver || "—" },
+    { label: "Status", render: r => badge(r.status) },
+    { label: "Created", render: r => fmtDate(r.created_at) },
+    { label: "Resolved by", render: r => r.resolved_by || "—" },
+    { label: "Actions", render: r => {
+        if (r.status !== "pending") return "—";
+        // Hint only -- the server is the real enforcement (it also
+        // falls back to "any of your team" when the configured
+        // approver isn't a real account yet, which this simple string
+        // check can't know). Worst case here is hiding a button the
+        // server would've allowed; it never shows one it would reject.
+        if (r.approver && r.approver.toLowerCase() !== currentEmail.toLowerCase()) {
+          return `<span style="color: var(--muted)">Only ${escapeHtml(r.approver)} can act on this</span>`;
+        }
+        return `<div class="approval-actions">
+             <button class="approve-btn" data-id="${r.approval_id}">Approve</button>
+             <button class="reject-btn reject" data-id="${r.approval_id}">Reject</button>
+           </div>`;
+      } },
+  ]);
+  document.querySelectorAll(".approve-btn").forEach(btn => btn.addEventListener("click", () => resolveApproval(btn.dataset.id, "approve")));
+  document.querySelectorAll(".reject-btn").forEach(btn => btn.addEventListener("click", () => resolveApproval(btn.dataset.id, "reject")));
+}
+
+async function resolveApproval(approvalId, action) {
+  if (!confirm(`${action === "approve" ? "Approve" : "Reject"} this item?`)) return;
+  try {
+    await api(`/v1/portal/approval-queue/${approvalId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    setStatus(`Item ${action === "approve" ? "approved" : "rejected"}`);
+    loadApprovals();
+  } catch (e) {
+    setStatus("Failed: " + e.message, true);
+  }
+}
+
+async function loadInbox() {
+  const rows = await api("/v1/portal/inbox/pending");
+  const container = document.getElementById("inboxList");
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty">No pending inbox items.</div>`;
+    return;
+  }
+  container.innerHTML = rows.map(r => {
+    const restricted = r.approver && r.approver.toLowerCase() !== currentEmail.toLowerCase();
+    return `
+    <div class="inbox-card" data-task="${r.task_id}">
+      <div class="inbox-meta">
+        <span><strong>From:</strong> ${escapeHtml(r.message.sender || "unknown")}</span>
+        <span><strong>Subject:</strong> ${escapeHtml(r.message.subject || "")}</span>
+        <span><strong>Classification:</strong> ${escapeHtml(r.result?.classification || "—")}</span>
+        <span><strong>Received:</strong> ${fmtDate(r.created_at)}</span>
+      </div>
+      <div class="inbox-body">${escapeHtml(r.message.body || "")}</div>
+      ${restricted
+        ? `<p style="color: var(--muted); font-size: 12.5px;">Only ${escapeHtml(r.approver)} can act on this.</p>`
+        : `<textarea class="inbox-reply" placeholder="Reply body...">${escapeHtml(r.result?.draft || "")}</textarea>
+      <div class="inbox-actions">
+        <button class="send-reply-btn" data-task="${r.task_id}">Send reply</button>
+        <button class="reject-reply-btn reject" data-task="${r.task_id}">Reject</button>
+      </div>`}
+    </div>
+  `;
+  }).join("");
+
+  document.querySelectorAll(".send-reply-btn").forEach(btn => btn.addEventListener("click", () => resolveInbox(btn.dataset.task, "send")));
+  document.querySelectorAll(".reject-reply-btn").forEach(btn => btn.addEventListener("click", () => resolveInbox(btn.dataset.task, "reject")));
+}
+
+async function resolveInbox(taskId, action) {
+  const card = document.querySelector(`.inbox-card[data-task="${taskId}"]`);
+  const replyBody = card ? card.querySelector(".inbox-reply").value : "";
+  try {
+    await api(`/v1/portal/inbox/${taskId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ action, reply_body: replyBody }),
+    });
+    setStatus(action === "send" ? "Reply queued — will send on the next sync cycle" : "Message rejected");
+    loadInbox();
+  } catch (e) {
+    setStatus("Failed: " + e.message, true);
+  }
+}
+
+async function loadTasks() {
+  const status = document.getElementById("taskStatusFilter").value;
+  const rows = await api("/v1/portal/tasks?" + new URLSearchParams(status ? { status } : {}));
+  document.getElementById("tasksTable").innerHTML = table(rows, [
+    { label: "Sub-agent", render: r => r.sub_agent },
+    { label: "Type", render: r => r.task_type },
+    { label: "Status", render: r => badge(r.status) },
+    { label: "Result", render: r => jsonDetail(r.result) },
+    { label: "Created", render: r => fmtDate(r.created_at) },
+    { label: "Resolved", render: r => fmtDate(r.resolved_at) },
+  ]);
+}
+
+async function loadAudit() {
+  const rows = await api("/v1/portal/audit-log");
+  document.getElementById("auditTable").innerHTML = table(rows, [
+    { label: "Agent", render: r => r.agent },
+    { label: "Action", render: r => r.action },
+    { label: "Detail", render: r => jsonDetail(r.detail) },
+    { label: "Occurred", render: r => fmtDate(r.occurred_at) },
+  ]);
+}
+
+async function loadReports() {
+  const rows = await api("/v1/portal/ar-reports");
+  document.getElementById("reportsTable").innerHTML = table(rows, [
+    { label: "Generated", render: r => fmtDate(r.generated_at) },
+    { label: "Total open AR", render: r => r.report.total_open_ar != null ? `$${Number(r.report.total_open_ar).toFixed(2)}` : "—" },
+    { label: "Aging summary", render: r => jsonDetail(r.report.aging_summary) },
+    { label: "Dispute aging", render: r => jsonDetail(r.report.dispute_aging) },
+    { label: "Cash inflow forecast", render: r => jsonDetail(r.report.cash_inflow_forecast) },
+  ]);
+}
+
+async function loadCustomers() {
+  const rows = await api("/v1/portal/customers");
+  document.getElementById("customersTable").innerHTML = table(rows, [
+    { label: "Customer", render: r => r.display_name || "—" },
+    { label: "Email", render: r => r.email || "—" },
+    { label: "Current limit", render: r => r.credit_limit != null ? `$${Number(r.credit_limit).toFixed(2)}` : "not set" },
+    { label: "Propose new limit", render: r =>
+        `<input type="number" min="0" step="0.01" class="credit-limit-input"
+                data-installation="${r.installation_id}" data-customer="${r.customer_id}"
+                placeholder="new limit" style="width:110px">
+         <button class="secondary request-credit-limit-btn" data-installation="${r.installation_id}" data-customer="${r.customer_id}">Request</button>` },
+  ]);
+  document.querySelectorAll(".request-credit-limit-btn").forEach(btn =>
+    btn.addEventListener("click", () => requestCreditLimit(btn.dataset.installation, btn.dataset.customer)));
+}
+
+async function requestCreditLimit(installationId, customerId) {
+  const input = document.querySelector(`.credit-limit-input[data-installation="${installationId}"][data-customer="${customerId}"]`);
+  const value = parseFloat(input.value);
+  if (isNaN(value) || value < 0) {
+    setStatus("Enter a proposed limit of 0 or more", true);
+    return;
+  }
+  const reason = prompt("Reason for this request (optional):", "") || "";
+  try {
+    await api(`/v1/portal/installations/${installationId}/customers/${customerId}/credit-limit-requests`, {
+      method: "POST",
+      body: JSON.stringify({ proposed_limit: value, reason }),
+    });
+    setStatus("Requested — check the Approval Queue tab; it only takes effect once approved.");
+    input.value = "";
+  } catch (e) {
+    setStatus("Couldn't submit the request: " + e.message, true);
+  }
+}
+
+const QBO_ERP_TYPE_ALIASES = ["quickbooks online", "qbo", "quickbooks_online"];
+function isQboErpType(erpType) {
+  return QBO_ERP_TYPE_ALIASES.includes((erpType || "").trim().toLowerCase());
+}
+
+async function loadIntegrations() {
+  const rows = await api("/v1/portal/installations");
+  document.getElementById("integrationsTable").innerHTML = table(rows, [
+    { label: "ERP", render: r => r.erp_type ? `${r.erp_type} ${r.erp_version || ""}` : "—" },
+    { label: "License", render: r => badge(r.license_status) },
+    { label: "Connector ver.", render: r => r.connector_version || "—" },
+    { label: "QuickBooks", render: r => {
+        if (!isQboErpType(r.erp_type)) return "—";
+        return r.qbo_connected_at
+          ? `Connected ${fmtDate(r.qbo_connected_at)}`
+          : `<button class="secondary connect-qbo-btn" data-id="${r.installation_id}">Connect...</button>`;
+      } },
+  ]);
+  document.querySelectorAll(".connect-qbo-btn").forEach(btn =>
+    btn.addEventListener("click", () => connectQbo(btn.dataset.id)));
+}
+
+async function connectQbo(installationId) {
+  try {
+    const result = await api(`/v1/portal/installations/${installationId}/qbo/connect`, { method: "POST" });
+    window.open(result.authorization_url, "_blank");
+    setStatus("Opened QuickBooks' consent screen in a new tab — log in there with your QuickBooks admin, then refresh this list.");
+  } catch (e) {
+    setStatus("Couldn't start the QuickBooks connection: " + e.message, true);
+  }
+}
+
+// The seven sub-agents CONTEXT.md defines (Section 2) — a fixed set,
+// one real column each, rather than a variable list discovered from
+// whatever happens to be in the data. Any sub_agent value that somehow
+// doesn't match one of these still isn't lost — pivotActivityRows()
+// below folds it into an "Other" column rather than silently dropping it.
+const SUB_AGENT_COLUMNS = [
+  { key: "cash_application", label: "Cash Application" },
+  { key: "invoice_delivery", label: "Invoice Delivery" },
+  { key: "collections_dunning", label: "Collections & Dunning" },
+  { key: "dispute_deduction", label: "Dispute & Deduction" },
+  { key: "credit_risk", label: "Credit Risk" },
+  { key: "ar_reporting", label: "AR Reporting" },
+  { key: "customer_inbox", label: "Customer Inbox" },
+];
+
+function pivotActivityRows(rows, keyFn) {
+  const groups = new Map();
+  for (const r of rows) {
+    const key = keyFn(r);
+    if (!groups.has(key)) groups.set(key, { ...r, bySubAgent: {}, byStatusBySubAgent: {} });
+    const g = groups.get(key);
+    const known = SUB_AGENT_COLUMNS.some(c => c.key === r.sub_agent);
+    const bucket = known ? r.sub_agent : "other";
+    g.bySubAgent[bucket] = (g.bySubAgent[bucket] || 0) + r.total;
+    g.byStatusBySubAgent[bucket] = r.by_status;
+  }
+  return Array.from(groups.values());
+}
+
+function activityColumns() {
+  return [
+    ...SUB_AGENT_COLUMNS.map(c => ({
+      label: c.label,
+      render: r => {
+        const count = r.bySubAgent[c.key];
+        if (count === undefined) return "—";
+        const detail = r.byStatusBySubAgent[c.key];
+        return `<span title="${escapeHtml(JSON.stringify(detail))}">${count}</span>`;
+      },
+    })),
+    { label: "Other", render: r => r.bySubAgent.other ?? "—" },
+  ];
+}
+
+async function loadActivity() {
+  const days = document.getElementById("activityDaysInput").value || "30";
+  const rows = await api("/v1/portal/activity-summary?" + new URLSearchParams({ days }));
+
+  const pivoted = pivotActivityRows(rows, r => r.day).sort((a, b) => b.day.localeCompare(a.day));
+
+  document.getElementById("activityTable").innerHTML = table(pivoted, [
+    { label: "Date", render: r => r.day },
+    ...activityColumns(),
+  ]);
+}
+
+const loaders = { approvals: loadApprovals, inbox: loadInbox, tasks: loadTasks, audit: loadAudit, reports: loadReports, customers: loadCustomers, integrations: loadIntegrations, activity: loadActivity };
+
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("visible", p.id === name));
+  loaders[name]().catch(e => setStatus(String(e.message || e), true));
+}
+
+document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
+document.getElementById("refreshApprovals").addEventListener("click", loadApprovals);
+document.getElementById("refreshInbox").addEventListener("click", loadInbox);
+document.getElementById("refreshTasks").addEventListener("click", loadTasks);
+document.getElementById("refreshAudit").addEventListener("click", loadAudit);
+document.getElementById("refreshReports").addEventListener("click", loadReports);
+document.getElementById("refreshCustomers").addEventListener("click", loadCustomers);
+document.getElementById("refreshIntegrations").addEventListener("click", loadIntegrations);
+document.getElementById("refreshActivity").addEventListener("click", loadActivity);
+document.getElementById("approvalStatusFilter").addEventListener("change", loadApprovals);
+document.getElementById("taskStatusFilter").addEventListener("change", loadTasks);
+
+function showLogin() {
+  document.getElementById("activateScreen").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("tabs").style.display = "none";
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("visible"));
+  document.getElementById("logoutBtn").style.display = "none";
+  document.getElementById("whoami").textContent = "";
+}
+
+function showTabsUI(email) {
+  currentEmail = email;
+  document.getElementById("activateScreen").style.display = "none";
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("tabs").style.display = "flex";
+  document.getElementById("logoutBtn").style.display = "inline-block";
+  document.getElementById("whoami").textContent = email;
+  showTab("approvals");
+}
+
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("emailInput").value.trim();
+  const password = document.getElementById("passwordInput").value;
+  if (!email || !password) return;
+  try {
+    const result = await api("/v1/portal/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    setStatus("Logged in");
+    showTabsUI(result.email);
+  } catch (e) {
+    setStatus("Could not log in: " + e.message, true);
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try { await api("/v1/portal/logout", { method: "POST" }); } catch (e) {}
+  setStatus("Logged out");
+  showLogin();
+});
+
+document.getElementById("activateBtn").addEventListener("click", async () => {
+  const password = document.getElementById("activatePassword").value;
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get("invite");
+  if (!password || password.length < 8) {
+    setStatus("Password must be at least 8 characters", true);
+    return;
+  }
+  try {
+    await api("/v1/portal/invite/accept", {
+      method: "POST",
+      body: JSON.stringify({ invite_token: inviteToken, password }),
+    });
+    setStatus("Account activated — log in below");
+    history.replaceState(null, "", window.location.pathname);
+    showLogin();
+  } catch (e) {
+    setStatus("Could not activate: " + e.message, true);
+  }
+});
+
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("invite")) {
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("activateScreen").style.display = "flex";
+  } else {
+    // If a valid session cookie already exists, this succeeds and tells
+    // us who's logged in; otherwise it 401s via api()'s own handling and
+    // we just show the login screen.
+    api("/v1/portal/me").then(r => showTabsUI(r.email)).catch(() => showLogin());
+  }
+})();
+</script>
+</body>
+</html>
