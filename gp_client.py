@@ -41,9 +41,21 @@ def build_connection_string(config: dict) -> str:
     config is exactly what installer_skeleton.py's
     collect_gp_connection_config() collects and stores locally (never
     sent to the Console — see that function's docstring).
+
+    Found and fixed 2026-09-12, the first time this was actually tested
+    against a real SQL Server: ODBC Driver 18 defaults to Encrypt=yes and
+    refuses the connection unless the server presents a certificate the
+    client trusts. An on-prem GP box essentially never has a CA-signed
+    cert (customer's own internal SQL Server, not a public-facing
+    service), so without TrustServerCertificate=yes every connection
+    attempt fails outright — this isn't a hardening option to leave off,
+    it's what makes a same-network on-prem connection work at all.
     """
     driver = "{ODBC Driver 18 for SQL Server}"
-    base = f"DRIVER={driver};SERVER={config['host']},{config['port']};DATABASE={config['database']};"
+    base = (
+        f"DRIVER={driver};SERVER={config['host']},{config['port']};DATABASE={config['database']};"
+        "TrustServerCertificate=yes;"
+    )
     if config.get("windows_auth", True):
         return base + "Trusted_Connection=yes;"
     return base + f"UID={config['username']};PWD={config['password']};"
