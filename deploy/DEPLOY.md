@@ -164,3 +164,13 @@ over instead.
 Also: recreating the `api` container after a code change leaves nginx
 holding a stale internal IP for it (502 Bad Gateway) — always follow with
 `docker compose restart nginx`.
+
+## Shared with OCRDocFlow
+
+This nginx also fronts `ocrdocflow.qumaxa.com` on the same droplet rather
+than a second nginx running for it — see `../../ocrdocflow/deploy/DEPLOY.md`.
+That's why `docker-compose.yml`'s nginx service mounts
+`/opt/ocrdocflow/frontend/dist`, and why `nginx/` on the droplet holds
+`ocrdocflow.conf` / `ocrdocflow-ssl.conf` (copied in from the OCRDocFlow
+repo, not tracked here). If OCRDocFlow isn't deployed on the box, Docker
+just creates that mount path empty and nginx starts normally.

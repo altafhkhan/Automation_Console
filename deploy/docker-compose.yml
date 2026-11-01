@@ -65,6 +65,10 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
       - certbot-webroot:/var/www/certbot:ro
       - certbot-certs:/etc/letsencrypt:ro
+      # OCRDocFlow's built frontend - this nginx also fronts
+      # ocrdocflow.qumaxa.com (see ../../ocrdocflow/deploy/DEPLOY.md) rather
+      # than running a second nginx for it.
+      - /opt/ocrdocflow/frontend/dist:/var/www/ocrdocflow:ro
 
 volumes:
   certbot-webroot:
