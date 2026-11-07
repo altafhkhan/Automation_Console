@@ -9,6 +9,9 @@ Start Menu "AR Connector status" shortcut and the uninstaller call.
 Commands
   setup        what the setup wizard runs: first install -> `install`,
                already configured -> `upgrade`.
+  preview      walk through every installer question without admin rights,
+               without contacting the Console and without installing anything
+               (for seeing the flow, or showing it to a buyer).
   install      interactive first-run: prerequisite checks, security
                notice, signup code, accounting system, approval routing,
                optional email, registration with the Console, Windows
@@ -66,6 +69,7 @@ from secure_store import read_json, write_json  # noqa: E402
 import installer_skeleton as skeleton  # noqa: E402
 
 SERVICE_NAME = "QumaxaARConnector"
+PREVIEW = False  # set by cmd_preview(): no admin, no Console, no writes
 PORTAL_URL = f"{CONSOLE_BASE_URL}/portal"
 SUPPORT_EMAIL = "altaf.khan@qumaxa.com"
 
@@ -450,12 +454,17 @@ def cmd_check() -> None:
 
 
 def cmd_install() -> None:
-    banner(f"AR Automation Connector {CONNECTOR_VERSION} — installation")
+    banner(f"AR Automation Connector {CONNECTOR_VERSION} — " + ("installation PREVIEW" if PREVIEW else "installation"))
     print(f"Console: {CONSOLE_BASE_URL}")
+    if PREVIEW:
+        print("Preview mode: every question is asked, nothing is saved, registered or installed.")
 
     step(1, "Checking this machine")
-    if not run_checks(require_console=True):
+    checks_ok = run_checks(require_console=not PREVIEW)
+    if not checks_ok and not PREVIEW:
         fail("Fix the failed checks and run the installer again.")
+    if PREVIEW:
+        print("  (preview: failed checks are shown but do not stop the walkthrough)")
 
     step(2, "Security and data-use notice")
     skeleton.show_security_notice()
@@ -482,6 +491,19 @@ def cmd_install() -> None:
     email_config = skeleton.collect_email_config()
 
     step(7, "Registering with the Console")
+    if PREVIEW:
+        print("  (preview) Would POST /v1/registrations with:")
+        print(json.dumps({"signup_code": signup_code, "erp_type": system.erp_type, "erp_version": system.erp_version,
+                          "erp_version_source": system.source, "connector_version": CONNECTOR_VERSION,
+                          "policy_config": policy_config, "acknowledged_security_notice": True}, indent=2))
+        print(f"  (preview) Would store tokens, {'email settings, ' if email_config else ''}{'GP connection, ' if gp_config else ''}"
+              f"and install.json under {CONFIG_DIR} (DPAPI-encrypted).")
+        step(8, "Background service")
+        print(f"  (preview) Would install and start the Windows Service '{SERVICE_NAME}' and wait for the first heartbeat.")
+        banner("Preview complete — nothing was changed on this machine")
+        print(f"  A real install ends with: 'Your trial has started. Manage approvals at {PORTAL_URL}'.")
+        pause_if_interactive()
+        return
     try:
         registration = skeleton.register(signup_code, system, policy_config)
     except requests.HTTPError as exc:
@@ -603,6 +625,12 @@ def cmd_purge() -> None:
         print("  Nothing to delete.")
 
 
+def cmd_preview() -> None:
+    global PREVIEW
+    PREVIEW = True
+    cmd_install()
+
+
 def cmd_setup() -> None:
     if TOKEN_STORE_PATH.exists():
         cmd_upgrade()
@@ -615,6 +643,7 @@ NEEDS_ADMIN = {"setup", "install", "configure", "upgrade", "uninstall", "purge"}
 COMMANDS = {
     "setup": cmd_setup,
     "install": cmd_install,
+    "preview": cmd_preview,
     "configure": cmd_configure,
     "upgrade": cmd_upgrade,
     "status": cmd_status,

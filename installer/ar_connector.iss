@@ -57,6 +57,7 @@ Source: "INSTALL-GUIDE.md"; DestDir: "{app}"; DestName: "INSTALL-GUIDE.txt"; Fla
 
 [Icons]
 Name: "{group}\AR Connector status"; Filename: "{app}\ARConnectorSetup.exe"; Parameters: "status"; WorkingDir: "{app}"
+Name: "{group}\AR Connector preview (walk through the questions)"; Filename: "{app}\ARConnectorSetup.exe"; Parameters: "preview"; WorkingDir: "{app}"
 Name: "{group}\AR Connector configure"; Filename: "{app}\ARConnectorSetup.exe"; Parameters: "configure"; WorkingDir: "{app}"
 Name: "{group}\AR Connector install guide"; Filename: "{app}\INSTALL-GUIDE.txt"
 Name: "{group}\Uninstall AR Connector"; Filename: "{uninstallexe}"
