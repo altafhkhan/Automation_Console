@@ -55,30 +55,26 @@ from typing import Any, Callable
 import requests  # pip install requests
 
 from console_config import CONSOLE_BASE_URL
+from connector_paths import (
+    EMAIL_CONFIG_PATH,
+    GP_CONNECTION_CONFIG_PATH,
+    GP_SYNC_STATE_PATH,
+    LOG_DIR,
+    STATUS_PATH,
+    TOKEN_STORE_PATH,
+)
+from connector_version import CONNECTOR_VERSION
+from secure_store import read_json as _read_secret, write_json as _write_secret
 
 try:
     import gp_client  # pip install pyodbc -- only actually imported/used if GP_CONNECTION_CONFIG_PATH exists
 except ImportError:
     gp_client = None  # honest: no pyodbc installed means no GP connection was ever configured either
 
-TOKEN_STORE_PATH = Path.home() / ".ar_agent" / "credentials.json"  # TODO: OS secret store, see installer_skeleton.py
 
-# Deliberately a SEPARATE file from TOKEN_STORE_PATH, not a second key in
-# the same JSON: Credentials.save() below only knows about the four auth
-# fields and rewrites the whole file on every token refresh — merging
-# email config into that file risks it being silently dropped on the
-# next refresh. TODO: OS secret store for this too, same gap as the auth
-# tokens — plain JSON on disk is a placeholder, not acceptable at rest.
-EMAIL_CONFIG_PATH = Path.home() / ".ar_agent" / "email_config.json"
+# Paths live in connector_paths.py (shared with the installer); secrets are
+# written/read through secure_store.py (DPAPI on Windows, 0600 elsewhere).
 
-# Same reasoning as EMAIL_CONFIG_PATH, same file installer_skeleton.py's
-# store_gp_connection_config() writes to. Its mere presence/absence is
-# what gates GP-specific behavior below — no separate erp_type flag
-# needed, matching how EMAIL_CONFIG_PATH's presence alone already gates
-# email sync. Added 2026-09-10 alongside gp_client.py — see that
-# module's docstring for what's real GP schema knowledge here vs.
-# genuinely unverified without a live database.
-GP_CONNECTION_CONFIG_PATH = Path.home() / ".ar_agent" / "gp_connection_config.json"
 
 
 def load_gp_connection_config() -> dict[str, Any] | None:
@@ -87,7 +83,7 @@ def load_gp_connection_config() -> dict[str, Any] | None:
     for load_email_config() below, applied the same way here."""
     if not GP_CONNECTION_CONFIG_PATH.exists():
         return None
-    return json.loads(GP_CONNECTION_CONFIG_PATH.read_text())
+    return _read_secret(GP_CONNECTION_CONFIG_PATH)
 
 
 def load_email_config() -> dict[str, Any] | None:
@@ -99,7 +95,7 @@ def load_email_config() -> dict[str, Any] | None:
     """
     if not EMAIL_CONFIG_PATH.exists():
         return None
-    return json.loads(EMAIL_CONFIG_PATH.read_text())
+    return _read_secret(EMAIL_CONFIG_PATH)
 
 
 def _wipe_local_credentials() -> None:
@@ -113,7 +109,7 @@ def _wipe_local_credentials() -> None:
     either way once the installation is gone, and one of those files
     holds a mailbox password in plaintext.
     """
-    for path in (TOKEN_STORE_PATH, EMAIL_CONFIG_PATH):
+    for path in (TOKEN_STORE_PATH, EMAIL_CONFIG_PATH, GP_CONNECTION_CONFIG_PATH, STATUS_PATH):
         try:
             path.unlink(missing_ok=True)
         except OSError:
@@ -147,7 +143,7 @@ class Credentials:
             raise FileNotFoundError(
                 f"No credentials at {TOKEN_STORE_PATH} — run the installer first."
             )
-        data = json.loads(TOKEN_STORE_PATH.read_text())
+        data = _read_secret(TOKEN_STORE_PATH)
         return cls(
             installation_id=data["installation_id"],
             access_token=data["access_token"],
@@ -156,17 +152,12 @@ class Credentials:
         )
 
     def save(self) -> None:
-        # TODO: same placeholder as installer_skeleton.py — replace with the
-        # OS secret store (Windows DPAPI/Credential Manager, Linux `keyring`)
-        # before shipping. Plain JSON on disk is not acceptable for a real
-        # credential at rest.
-        TOKEN_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_STORE_PATH.write_text(json.dumps({
+        _write_secret(TOKEN_STORE_PATH, {
             "installation_id": self.installation_id,
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
             "access_token_expires_at": self.access_token_expires_at.isoformat(),
-        }))
+        })
 
     def needs_refresh(self) -> bool:
         now = datetime.now(timezone.utc)
@@ -248,9 +239,6 @@ def report_error(creds: Credentials, sub_agent: str, error_code: str, error_deta
 # loop.
 # ---------------------------------------------------------------------------
 SyncWorker = Callable[[Credentials, dict[str, Any]], None]
-
-
-GP_SYNC_STATE_PATH = Path.home() / ".ar_agent" / "gp_sync_state.json"
 
 
 def _load_gp_sync_state() -> dict[str, Any]:
@@ -602,7 +590,22 @@ def run_sync_cycle(creds: Credentials, heartbeat_response: dict[str, Any]) -> No
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
-CONNECTOR_VERSION = "v0.1.0"  # TODO: pull from package metadata, must match installer_skeleton.py's registration
+def _write_status(heartbeat_response: dict[str, Any] | None, error: str | None = None) -> None:
+    """Small, non-secret status file for `ARConnectorSetup status` and the
+    installer's first-run check. Best effort — never raises."""
+    try:
+        entitlements = (heartbeat_response or {}).get("entitlements", {})
+        STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATUS_PATH.write_text(json.dumps({
+            "connector_version": CONNECTOR_VERSION,
+            "last_attempt_at": datetime.now(timezone.utc).isoformat(),
+            "last_heartbeat_at": datetime.now(timezone.utc).isoformat() if heartbeat_response is not None else None,
+            "license_status": entitlements.get("license_status"),
+            "connector_should_run": entitlements.get("connector_should_run"),
+            "last_error": error,
+        }))
+    except OSError:
+        log.debug("Could not write status file", exc_info=True)
 
 
 def run_forever(stop_event: threading.Event) -> None:
@@ -620,6 +623,7 @@ def run_forever(stop_event: threading.Event) -> None:
                 creds = refresh_credentials(creds)
                 heartbeat_response = send_heartbeat(creds, CONNECTOR_VERSION, metrics={})
 
+            _write_status(heartbeat_response)
             entitlements = heartbeat_response.get("entitlements", {})
             if entitlements.get("connector_should_run", True):
                 run_sync_cycle(creds, heartbeat_response)
@@ -636,15 +640,30 @@ def run_forever(stop_event: threading.Event) -> None:
             log.critical("Refresh token invalid or expired — installation must be re-registered. Stopping.")
             _wipe_local_credentials()
             return
-        except requests.RequestException:
+        except requests.RequestException as exc:
             # Transient network/Console issue — log and retry next interval
             # rather than crashing the service.
             log.exception("Heartbeat cycle failed, will retry next interval")
+            _write_status(None, error=str(exc))
 
         stop_event.wait(HEARTBEAT_INTERVAL_SECONDS)
 
 
+def configure_file_logging() -> None:
+    """Add a rotating log file next to the config (used by the Windows
+    Service wrapper and by `connector_daemon.py` run by hand)."""
+    try:
+        from logging.handlers import RotatingFileHandler
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(LOG_DIR / "connector.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        logging.getLogger().addHandler(handler)
+    except OSError:
+        log.warning("Could not open log file under %s — logging to console only", LOG_DIR)
+
+
 def main() -> None:
+    configure_file_logging()
     stop_event = threading.Event()
 
     def _handle_stop_signal(signum, frame):  # noqa: ANN001 — signal handler signature is fixed

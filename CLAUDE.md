@@ -27,6 +27,11 @@ products; the other is OCRDocFlow.
   pieces; `gp_client.py` (Dynamics GP via SQL Server) and `qbo_client.py`
   (QuickBooks Online) are the ERP connectors; `stripe_config.py` holds
   billing config. Static admin/portal UI lives in `static/`.
+- `installer/` builds the customer-facing Connector package
+  (`build.ps1` → PyInstaller + Inno Setup → `AR-Connector-Setup-<ver>.exe`);
+  `connector_paths.py` / `secure_store.py` / `connector_version.py` are
+  shared by the daemon and the installer. `demo/index.html` is the
+  self-contained website demo (see `demo/README.md`).
 - Postgres, Docker Compose, nginx + Let's Encrypt — all in `deploy/`.
 - The Console's nginx also fronts `ocrdocflow.qumaxa.com` (see
   `deploy/DEPLOY.md`, "Shared with OCRDocFlow").

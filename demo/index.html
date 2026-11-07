@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>AR Automation Console — Interactive demo</title>
+<meta name="description" content="A guided, interactive demo of the Qumaxa AR Automation Console with sample data. Nothing here is connected to a real accounting system.">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a22; --border: #2a2f3a; --text: #e6e8eb;
+    --muted: #8a8f9a; --accent: #4f8cff; --danger: #e5534b; --warn: #d4a72c; --ok: #3fb950;
+    --demo: #7c5cff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  a { color: var(--accent); }
+  .demo-bar { background: linear-gradient(90deg, #4d35c9, #7c5cff); color: #fff; padding: 8px 20px; font-size: 13px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .demo-bar strong { font-weight: 700; }
+  .demo-bar .spacer { flex: 1; }
+  .demo-bar button { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.4); color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .demo-bar button:hover { background: rgba(255,255,255,.3); }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  #whoami { color: var(--muted); font-size: 12px; }
+  #whoami b { color: var(--text); }
+  button { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  button.secondary { background: #2a2f3a; }
+  button.reject { background: var(--danger); }
+  button:hover { filter: brightness(1.1); }
+  nav { display: flex; gap: 4px; padding: 10px 20px 0; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; }
+  nav button.tab { background: transparent; color: var(--muted); border-radius: 6px 6px 0 0; padding: 8px 16px; border: 1px solid transparent; white-space: nowrap; }
+  nav button.tab.active { color: var(--text); background: var(--bg); border-color: var(--border); border-bottom-color: var(--bg); }
+  nav button.tab .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--warn); color: #000; font-size: 11px; font-weight: 700; }
+  main { padding: 20px; display: none; max-width: 1200px; }
+  main.visible { display: block; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; line-height: 1.5; }
+  .hint.real { border-left: 3px solid var(--demo); padding-left: 10px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .toolbar select { background: #0b0d11; border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; background: #12151b; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1b2028; }
+  code, .mono { font-family: "SF Mono", Consolas, monospace; font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.completed, .badge.active, .badge.resolved, .badge.approved, .badge.connected, .badge.normal, .badge.sent, .badge.running, .badge.paid { background: rgba(63,185,80,.15); color: var(--ok); }
+  .badge.needs_approval, .badge.pending, .badge.pending_activation, .badge.pending_final_demand, .badge.pending_resolution, .badge.elevated, .badge.trial, .badge.paused, .badge.open, .badge.queued { background: rgba(212,167,44,.15); color: var(--warn); }
+  .badge.exception, .badge.expired, .badge.over_limit, .badge.sla_breached, .badge.rejected, .badge.escalated { background: rgba(229,83,75,.15); color: var(--danger); }
+  details summary { cursor: pointer; color: var(--accent); }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; font-size: 11.5px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .value.small { font-size: 14px; }
+  .card .note { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .inbox-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .inbox-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  .inbox-meta strong { color: var(--text); }
+  .inbox-body { background: #0b0d11; border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 160px; overflow-y: auto; color: var(--text); white-space: pre-wrap; }
+  .inbox-reply { width: 100%; margin-top: 10px; background: #0b0d11; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; min-height: 70px; }
+  .inbox-actions, .approval-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .approval-actions { margin-top: 0; }
+  h3 { font-size: 14px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .bars { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-items: end; height: 150px; margin: 10px 0 6px; }
+  .bar { background: var(--accent); border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
+  .bar span { position: absolute; top: -20px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); }
+  .bar-labels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; font-size: 11.5px; color: var(--muted); text-align: center; }
+  .bar.b1 { background: #3fb950; } .bar.b2 { background: #4f8cff; } .bar.b3 { background: #d4a72c; } .bar.b4 { background: #e58f4b; } .bar.b5 { background: #e5534b; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1f2430; border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 60; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+  /* guided tour */
+  .tour-highlight { outline: 2px solid var(--demo); outline-offset: 3px; border-radius: 8px; box-shadow: 0 0 0 6px rgba(124,92,255,.18); }
+  #tour { position: fixed; right: 20px; bottom: 20px; width: 360px; max-width: calc(100vw - 40px); background: #1a1630; border: 1px solid var(--demo); border-radius: 10px; padding: 16px 18px; z-index: 50; box-shadow: 0 10px 40px rgba(0,0,0,.5); display: none; }
+  #tour.open { display: block; }
+  #tour .step { color: var(--demo); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  #tour h2 { font-size: 15px; margin: 6px 0 6px; }
+  #tour p { font-size: 13px; line-height: 1.5; margin: 0 0 12px; color: #d8d6e8; }
+  #tour .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #tour button.primary { background: var(--demo); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 70; padding: 20px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; width: 520px; max-width: 100%; }
+  .modal h2 { margin: 0 0 10px; font-size: 16px; }
+  .modal p, .modal li { font-size: 13px; color: #cfd3da; line-height: 1.5; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .modal input { width: 100%; background: #0b0d11; border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+  @media (max-width: 640px) { main { padding: 14px; } #tour { right: 10px; bottom: 10px; } }
+</style>
+</head>
+<body>
+<div class="demo-bar">
+  <span><strong>Interactive demo</strong> — sample data for a fictional company. Nothing here is connected to a real accounting system; approvals and replies only change this page.</span>
+  <span class="spacer"></span>
+  <button id="tourBtn">Start guided tour</button>
+  <button id="resetBtn">Reset demo</button>
+  <a href="https://qumaxa.com/contact?topic=ar-automation-console" style="color:#fff;font-weight:600">Request a real demo →</a>
+</div>
+<header>
+  <div>
+    <h1>AR Automation Console</h1>
+    <div class="sub">Your company's own approval queue — only your team can see or act on this</div>
+  </div>
+  <div id="whoami">Signed in as <b>mina.rahimi@harborpine.example</b> · Controller · Harbor &amp; Pine Supplies Ltd.</div>
+</header>
+<nav id="tabs">
+  <button class="tab active" data-tab="approvals">Approval Queue<span class="count" id="approvalsCount"></span></button>
+  <button class="tab" data-tab="inbox">Customer Inbox<span class="count" id="inboxCount"></span></button>
+  <button class="tab" data-tab="tasks">Tasks</button>
+  <button class="tab" data-tab="audit">Audit Log</button>
+  <button class="tab" data-tab="reports">AR Reports</button>
+  <button class="tab" data-tab="customers">Customers &amp; Credit Limits</button>
+  <button class="tab" data-tab="integrations">Integrations</button>
+  <button class="tab" data-tab="activity">Daily Activity</button>
+</nav>
+
+<main id="approvals" class="tab-panel visible">
+  <p class="hint real">Every action with money or customer risk attached stops here until a named person approves it. The agents only propose; your policy (approver + threshold per action type) decides who signs off.</p>
+  <div class="toolbar">
+    <select id="approvalStatusFilter"><option value="pending" selected>pending</option><option value="approved">approved</option><option value="rejected">rejected</option><option value="">All statuses</option></select>
+  </div>
+  <div id="approvalsTable" class="table-wrap"></div>
+</main>
+
+<main id="inbox" class="tab-panel">
+  <p class="hint real">The connector reads your AR mailbox. Today every message is handed to a human in <b>draft-only mode</b>: you write or edit the reply here, and the connector sends it through your own mail server. Messages with legal or angry wording are flagged for escalation. Automatic classification and AI-drafted replies are on the roadmap.</p>
+  <div id="inboxList"></div>
+</main>
+
+<main id="tasks" class="tab-panel">
+  <p class="hint real">Everything the AR agent and its sub-agents did in the last cycle, with the outcome: completed, needs approval, or exception (parked for a human).</p>
+  <div id="tasksTable" class="table-wrap"></div>
+</main>
+
+<main id="audit" class="tab-panel">
+  <p class="hint real">Every decision — by an agent or by a person — is written to the audit log with who, what and the full detail. Your own approvals on this page appear here too.</p>
+  <div id="auditTable" class="table-wrap"></div>
+</main>
+
+<main id="reports" class="tab-panel">
+  <p class="hint real">All figures are computed deterministically from open invoices and cases — an AI model never calculates a number. Metrics that need sales history (DSO, CEI) are shown as unavailable until that data source is connected.</p>
+  <div id="reportsBody"></div>
+</main>
+
+<main id="customers" class="tab-panel">
+  <p class="hint real">Exposure versus credit limit per customer, pulled from the accounting system. Limit changes are requests: they go to the approval queue, and a human applies them.</p>
+  <div id="customersTable" class="table-wrap"></div>
+</main>
+
+<main id="integrations" class="tab-panel">
+  <p class="hint real">One installation per accounting system. QuickBooks Online connects through Intuit's own consent screen; Dynamics GP uses the installed connector with read-only SQL access. Subscriptions are handled by Stripe Checkout.</p>
+  <div id="integrationsBody"></div>
+</main>
+
+<main id="activity" class="tab-panel">
+  <p class="hint real">The daily summary the Console produces for your team: what ran, what is waiting on you, and what needs attention.</p>
+  <div id="activityBody"></div>
+</main>
+
+<div id="tour">
+  <div class="step" id="tourStep"></div>
+  <h2 id="tourTitle"></h2>
+  <p id="tourText"></p>
+  <div class="actions">
+    <button class="secondary" id="tourBack">Back</button>
+    <button class="secondary" id="tourSkip">Close</button>
+    <button class="primary" id="tourNext">Next</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal"><div class="modal" id="modalBody"></div></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  const ME = "mina.rahimi@harborpine.example";
+  const CFO = "d.okafor@harborpine.example";
+  const DAY = 86400000;
+  const now = () => new Date();
+  const daysAgo = (d, h) => new Date(Date.now() - d * DAY - (h || 0) * 3600000);
+  const inDays = (d) => new Date(Date.now() + d * DAY);
+  const money = (n) => "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDate = (d) => d ? new Date(d).toLocaleString() : "—";
+  const fmtDay = (d) => d ? new Date(d).toLocaleDateString() : "—";
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const badge = (v) => v == null ? "—" : `<span class="badge ${String(v).toLowerCase()}">${esc(String(v).replace(/_/g, " "))}</span>`;
+  const jsonDetail = (o) => `<details><summary>view</summary><pre>${esc(JSON.stringify(o, null, 2))}</pre></details>`;
+  const table = (rows, cols) => !rows.length ? `<div class="empty">No rows.</div>` :
+    `<table><thead><tr>${cols.map(c => `<th>${c.label}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  let uid = 100;
+  const id = () => "demo-" + (uid++);
+
+  // ------------------------------------------------------------------
+  // Seed data — a fictional distributor on QuickBooks Online
+  // ------------------------------------------------------------------
+  function seed() {
+    const customers = [
+      { id: "C-1001", name: "Marlowe Logistics Inc.", email: "ap@marlowe-logistics.example", limit: 25000, promise: null },
+      { id: "C-1002", name: "Atlas Fabrication Co.", email: "accounts@atlasfab.example", limit: 15000, promise: null },
+      { id: "C-1003", name: "Bluegate Hospitality Group", email: "finance@bluegate.example", limit: 40000, promise: inDays(4) },
+      { id: "C-1004", name: "Redwood Dental Partners", email: "billing@redwooddental.example", limit: 10000, promise: null },
+      { id: "C-1005", name: "Northline Builders Ltd.", email: "payables@northline.example", limit: 60000, promise: null },
+      { id: "C-1006", name: "Cedar & Vine Restaurants", email: "ap@cedarvine.example", limit: 8000, promise: null },
+      { id: "C-1007", name: "Summit Peak Outfitters", email: "accounts@summitpeak.example", limit: 20000, promise: null },
+      { id: "C-1008", name: "Ironbridge Municipal Services", email: "ap@ironbridge.example", limit: 75000, promise: null },
+    ];
+    const invoices = [
+      { ref: "INV-1038", cust: "C-1001", amount: 4200.00, due: -34 },
+      { ref: "INV-1042", cust: "C-1002", amount: 1850.00, due: -47, disputed: true },
+      { ref: "INV-1049", cust: "C-1002", amount: 9400.00, due: -12 },
+      { ref: "INV-1051", cust: "C-1002", amount: 5600.00, due: 9 },
+      { ref: "INV-1053", cust: "C-1003", amount: 12750.00, due: -21 },
+      { ref: "INV-1057", cust: "C-1003", amount: 7300.00, due: 14 },
+      { ref: "INV-1060", cust: "C-1004", amount: 2499.00, due: -8 },
+      { ref: "INV-1061", cust: "C-1005", amount: 18200.00, due: 21 },
+      { ref: "INV-1063", cust: "C-1005", amount: 22500.00, due: -3 },
+      { ref: "INV-1066", cust: "C-1006", amount: 3100.00, due: -96 },
+      { ref: "INV-1068", cust: "C-1007", amount: 6400.00, due: -63 },
+      { ref: "INV-1070", cust: "C-1007", amount: 2200.00, due: 27 },
+      { ref: "INV-1072", cust: "C-1008", amount: 31000.00, due: 12 },
+      { ref: "INV-1073", cust: "C-1008", amount: 14800.00, due: 2 },
+    ].map(i => ({ ...i, due_date: inDays(i.due) }));
+
+    const approvals = [
+      { id: id(), action_type: "dunning_activation", amount: 4200.00, approver: ME, status: "pending", created: daysAgo(0, 3), detail: { customer: "Marlowe Logistics Inc.", invoice: "INV-1038", days_overdue: 34, step: "reminder", reason: "First-time collections outreach for this customer requires approval (policy: dunning_activation)." } },
+      { id: id(), action_type: "credit_memo", amount: 350.00, approver: CFO, status: "pending", created: daysAgo(1, 2), detail: { customer: "Atlas Fabrication Co.", invoice: "INV-1042", dispute_case: "DSP-0007", reason_code: "pricing", proposed_by: "mina.rahimi@harborpine.example", note: "Customer was quoted the 2025 unit price; difference credited." } },
+      { id: id(), action_type: "credit_hold", amount: 16850.00, approver: ME, status: "pending", created: daysAgo(0, 6), detail: { customer: "Atlas Fabrication Co.", exposure: 16850.00, credit_limit: 15000.00, utilization: "112%", recommendation: "Place on credit hold until INV-1049 is paid. Recommendation only — a human applies it in the accounting system." } },
+      { id: id(), action_type: "cash_application_match", amount: 2499.00, approver: ME, status: "pending", created: daysAgo(0, 1), detail: { payment: "QBO payment #8821", received: 2498.50, invoice: "INV-1060", customer: "Redwood Dental Partners", match_type: "tolerance", confidence: 0.9, note: "Within $1.00 tolerance; below the auto-post threshold you configured." } },
+      { id: id(), action_type: "unidentified_cash", amount: 1200.00, approver: ME, status: "pending", created: daysAgo(0, 1), detail: { payment: "Bank transfer, ref 'HARBORPINE NOV'", received: 1200.00, match_type: "unmatched", reason: "no_matching_invoice", suggestion: "No open invoice for $1,200.00. Park as unapplied cash or ask the remitter." } },
+      { id: id(), action_type: "dunning_activation", amount: 3100.00, approver: ME, status: "approved", created: daysAgo(6), resolved_by: ME, resolved_at: daysAgo(6, -2), detail: { customer: "Cedar & Vine Restaurants", invoice: "INV-1066", step: "reminder" } },
+      { id: id(), action_type: "write_off", amount: 410.00, approver: CFO, status: "rejected", created: daysAgo(9), resolved_by: CFO, resolved_at: daysAgo(8), detail: { customer: "Summit Peak Outfitters", invoice: "INV-0991", note: "Rejected: customer has since promised payment." } },
+    ];
+
+    const inbox = [
+      { id: id(), sender: "ap@marlowe-logistics.example", subject: "Remittance advice — payment of $4,200.00 scheduled", received: daysAgo(0, 2), escalated: false,
+        body: "Hello,\n\nPlease find our remittance advice. Payment of $4,200.00 against INV-1038 has been scheduled for Friday via ACH.\n\nRegards,\nAccounts Payable, Marlowe Logistics" },
+      { id: id(), sender: "billing@redwooddental.example", subject: "Copy of invoice INV-1060 please", received: daysAgo(0, 5), escalated: false,
+        body: "Hi,\n\nCould you resend INV-1060 as a PDF? Our original was addressed to a colleague who has left.\n\nThanks,\nPriya" },
+      { id: id(), sender: "accounts@atlasfab.example", subject: "RE: Reminder INV-1042 — this is unacceptable", received: daysAgo(1, 1), escalated: true,
+        body: "We already told your sales rep the price on INV-1042 is wrong. We will not pay the difference and will involve our lawyer if reminders continue.\n\nAtlas Fabrication" },
+    ];
+
+    const tasks = [
+      { id: id(), sub_agent: "invoice_delivery", task_type: "deliver_invoice", status: "completed", created: daysAgo(0, 1), summary: "INV-1073 validated (PO present, bill-to matches) and emailed to ap@ironbridge.example; delivery confirmed." },
+      { id: id(), sub_agent: "cash_application", task_type: "apply_payment", status: "completed", created: daysAgo(0, 1), summary: "QBO payment #8819 $18,200.00 matched exactly to INV-1061 (confidence 1.0) and posted." },
+      { id: id(), sub_agent: "cash_application", task_type: "apply_payment", status: "needs_approval", created: daysAgo(0, 1), summary: "QBO payment #8821 $2,498.50 vs INV-1060 $2,499.00 — tolerance match, awaiting approval." },
+      { id: id(), sub_agent: "cash_application", task_type: "apply_payment", status: "exception", created: daysAgo(0, 1), summary: "Bank transfer $1,200.00 — no matching invoice; parked as unidentified cash." },
+      { id: id(), sub_agent: "collections_dunning", task_type: "dunning_step", status: "needs_approval", created: daysAgo(0, 3), summary: "INV-1038 entered bucket 31-60 → reminder; first outreach for Marlowe Logistics requires approval." },
+      { id: id(), sub_agent: "collections_dunning", task_type: "dunning_step", status: "completed", created: daysAgo(0, 3), summary: "INV-1068 (Summit Peak) escalation letter queued to the outbox — sequence step 3 of 4." },
+      { id: id(), sub_agent: "collections_dunning", task_type: "dunning_step", status: "completed", created: daysAgo(0, 3), summary: "INV-1042 sequence paused automatically: dispute case DSP-0007 is open." },
+      { id: id(), sub_agent: "dispute_deduction", task_type: "sla_check", status: "exception", created: daysAgo(0, 4), summary: "DSP-0004 (Summit Peak, $640.00) open 16 days — SLA of 14 days breached; owner notified." },
+      { id: id(), sub_agent: "credit_risk", task_type: "exposure_check", status: "needs_approval", created: daysAgo(0, 6), summary: "Atlas Fabrication at 112% of credit limit — credit hold recommended." },
+      { id: id(), sub_agent: "customer_inbox", task_type: "triage", status: "needs_approval", created: daysAgo(0, 2), summary: "3 new messages routed to the inbox queue; 1 flagged for escalation (legal wording)." },
+      { id: id(), sub_agent: "ar_reporting", task_type: "daily_report", status: "completed", created: daysAgo(0, 7), summary: "Aging, dispute aging and 90-day cash forecast recomputed from 14 open invoices." },
+    ];
+
+    const audit = [
+      { id: id(), at: daysAgo(0, 1), actor: "cash_application_sub_agent", action: "payment_posted", detail: { payment: "#8819", invoice: "INV-1061", amount: 18200.00, match_type: "exact" } },
+      { id: id(), at: daysAgo(0, 1), actor: "cash_application_sub_agent", action: "approval_requested", detail: { action_type: "cash_application_match", invoice: "INV-1060", confidence: 0.9 } },
+      { id: id(), at: daysAgo(0, 1), actor: "invoice_delivery_sub_agent", action: "invoice_delivered", detail: { invoice: "INV-1073", to: "ap@ironbridge.example" } },
+      { id: id(), at: daysAgo(0, 3), actor: "collections_dunning_sub_agent", action: "sequence_paused", detail: { invoice: "INV-1042", reason: "dispute_open", case: "DSP-0007" } },
+      { id: id(), at: daysAgo(0, 3), actor: "collections_dunning_sub_agent", action: "approval_requested", detail: { action_type: "dunning_activation", invoice: "INV-1038", customer: "Marlowe Logistics Inc." } },
+      { id: id(), at: daysAgo(0, 4), actor: "dispute_deduction_sub_agent", action: "sla_breached", detail: { case: "DSP-0004", days_open: 16 } },
+      { id: id(), at: daysAgo(0, 6), actor: "credit_risk_sub_agent", action: "approval_requested", detail: { action_type: "credit_hold", customer: "Atlas Fabrication Co.", utilization: 1.12 } },
+      { id: id(), at: daysAgo(1, 2), actor: ME, action: "dispute_resolution_proposed", detail: { case: "DSP-0007", resolution: "credit_memo", forgiven_amount: 350.00, approver: CFO } },
+      { id: id(), at: daysAgo(1, 4), actor: "dispute_deduction_sub_agent", action: "case_opened", detail: { case: "DSP-0007", invoice: "INV-1042", amount: 350.00, suggested_owner: "analyst" } },
+      { id: id(), at: daysAgo(6, -2), actor: ME, action: "approval_resolved", detail: { action_type: "dunning_activation", invoice: "INV-1066", decision: "approve" } },
+      { id: id(), at: daysAgo(8), actor: CFO, action: "approval_resolved", detail: { action_type: "write_off", invoice: "INV-0991", decision: "reject" } },
+      { id: id(), at: daysAgo(12), actor: "connector", action: "heartbeat", detail: { connector_version: "1.0.0", license_status: "trial" } },
+      { id: id(), at: daysAgo(12), actor: ME, action: "qbo_connected", detail: { realm_id: "9130••••••••2214", environment: "production" } },
+    ];
+
+    const disputes = [
+      { case: "DSP-0007", customer: "Atlas Fabrication Co.", invoice: "INV-1042", reason: "pricing", amount: 350.00, status: "open", opened: daysAgo(1, 4), owner: "analyst" },
+      { case: "DSP-0004", customer: "Summit Peak Outfitters", invoice: "INV-1068", reason: "quantity", amount: 640.00, status: "sla_breached", opened: daysAgo(16), owner: "controller" },
+    ];
+
+    return { customers, invoices, approvals, inbox, tasks, audit, disputes, outbox: [{ to: "accounts@summitpeak.example", subject: "Escalation: INV-1068 is 63 days overdue", status: "queued" }], qboConnected: true, licenseDaysLeft: 5 };
+  }
+
+  let S = seed();
+
+  // ------------------------------------------------------------------
+  // Deterministic calculations (mirror of the Console's sub-agents)
+  // ------------------------------------------------------------------
+  const bucketOf = (due) => { const d = Math.floor((Date.now() - new Date(due)) / DAY); return d <= 0 ? "current" : d <= 30 ? "1-30" : d <= 60 ? "31-60" : d <= 90 ? "61-90" : "90+"; };
+  const stepOf = { "current": null, "1-30": "reminder", "31-60": "follow_up", "61-90": "escalation", "90+": "final_demand" };
+  const exposureOf = (cid) => S.invoices.filter(i => i.cust === cid).reduce((a, i) => a + i.amount, 0);
+  const riskOf = (exp, limit) => { const u = limit ? exp / limit : 0; return { utilization: u, level: u >= 1 ? "over_limit" : u >= 0.8 ? "elevated" : "normal" }; };
+  const custName = (cid) => (S.customers.find(c => c.id === cid) || {}).name || cid;
+
+  // ------------------------------------------------------------------
+  // Renderers
+  // ------------------------------------------------------------------
+  function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
+  function log(actor, action, detail) { S.audit.unshift({ id: id(), at: now(), actor, action, detail }); }
+  function counts() {
+    const p = S.approvals.filter(a => a.status === "pending").length, i = S.inbox.length;
+    document.getElementById("approvalsCount").textContent = p || ""; document.getElementById("approvalsCount").style.display = p ? "" : "none";
+    document.getElementById("inboxCount").textContent = i || ""; document.getElementById("inboxCount").style.display = i ? "" : "none";
+  }
+
+  function renderApprovals() {
+    const f = document.getElementById("approvalStatusFilter").value;
+    const rows = S.approvals.filter(a => !f || a.status === f);
+    document.getElementById("approvalsTable").innerHTML = table(rows, [
+      { label: "Type", render: r => esc(r.action_type) + "<br>" + jsonDetail(r.detail) },
+      { label: "Amount", render: r => r.amount != null ? money(r.amount) : "—" },
+      { label: "Approver", render: r => esc(r.approver) },
+      { label: "Status", render: r => badge(r.status) },
+      { label: "Created", render: r => fmtDate(r.created) },
+      { label: "Resolved by", render: r => r.resolved_by ? esc(r.resolved_by) + "<br><span class='mono'>" + fmtDate(r.resolved_at) + "</span>" : "—" },
+      { label: "Actions", render: r => r.status !== "pending" ? "—" : r.approver !== ME
+          ? `<span style="color: var(--muted)">Only ${esc(r.approver)} can act on this</span>`
+          : `<div class="approval-actions"><button data-act="approve" data-id="${r.id}">Approve</button><button class="reject" data-act="reject" data-id="${r.id}">Reject</button></div>` },
+    ]);
+    document.querySelectorAll("#approvalsTable button[data-act]").forEach(b => b.addEventListener("click", () => resolveApproval(b.dataset.id, b.dataset.act)));
+  }
+  function resolveApproval(aid, act) {
+    const a = S.approvals.find(x => x.id === aid); if (!a) return;
+    a.status = act === "approve" ? "approved" : "rejected"; a.resolved_by = ME; a.resolved_at = now();
+    log(ME, "approval_resolved", { action_type: a.action_type, amount: a.amount, decision: act });
+    const t = S.tasks.find(t => t.status === "needs_approval" && t.summary.includes(a.detail.invoice || a.detail.customer || "")); if (t) t.status = act === "approve" ? "completed" : "exception";
+    if (a.action_type === "dunning_activation" && act === "approve") { S.outbox.push({ to: "ap@marlowe-logistics.example", subject: "Friendly reminder: INV-1038 is past due", status: "queued" }); log("collections_dunning_sub_agent", "reminder_queued", { invoice: a.detail.invoice, to: "ap@marlowe-logistics.example" }); }
+    if (a.action_type === "cash_application_match" && act === "approve") { S.invoices = S.invoices.filter(i => i.ref !== "INV-1060"); log("cash_application_sub_agent", "payment_posted", { payment: "#8821", invoice: "INV-1060", amount: 2498.50, match_type: "tolerance" }); }
+    if (a.action_type === "credit_hold" && act === "approve") { const c = S.customers.find(c => c.id === "C-1002"); c.hold = true; log("credit_risk_sub_agent", "credit_hold_recorded", { customer: c.name }); }
+    toast(`${act === "approve" ? "Approved" : "Rejected"}: ${a.action_type.replace(/_/g, " ")} — written to the audit log`);
+    renderAll();
+  }
+
+  function renderInbox() {
+    const el = document.getElementById("inboxList");
+    if (!S.inbox.length) { el.innerHTML = `<div class="empty">No pending inbox items.</div>`; return; }
+    el.innerHTML = S.inbox.map(m => `
+      <div class="inbox-card">
+        <div class="inbox-meta">
+          <span><strong>From:</strong> ${esc(m.sender)}</span>
+          <span><strong>Subject:</strong> ${esc(m.subject)}</span>
+          <span><strong>Classification:</strong> ${m.escalated ? badge("escalated") + " legal / angry wording — human only" : "pending human review (draft-only mode)"}</span>
+          <span><strong>Received:</strong> ${fmtDate(m.received)}</span>
+        </div>
+        <div class="inbox-body">${esc(m.body)}</div>
+        <textarea class="inbox-reply" placeholder="Write the reply the connector should send from your own mailbox..." data-id="${m.id}"></textarea>
+        <div class="inbox-actions"><button data-act="send" data-id="${m.id}">Send reply</button><button class="reject" data-act="reject" data-id="${m.id}">Reject</button></div>
+      </div>`).join("");
+    el.querySelectorAll("button[data-act]").forEach(b => b.addEventListener("click", () => resolveInbox(b.dataset.id, b.dataset.act)));
+  }
+  function resolveInbox(mid, act) {
+    const m = S.inbox.find(x => x.id === mid); if (!m) return;
+    const body = (document.querySelector(`textarea[data-id="${mid}"]`) || {}).value || "";
+    if (act === "send" && !body.trim()) { toast("Write a reply first — in draft-only mode nothing is sent without your words."); return; }
+    S.inbox = S.inbox.filter(x => x.id !== mid);
+    if (act === "send") { S.outbox.push({ to: m.sender, subject: "RE: " + m.subject, status: "queued" }); log(ME, "inbox_reply_sent", { to: m.sender, subject: m.subject, chars: body.length }); toast("Reply queued — the connector sends it through your own mail server"); }
+    else { log(ME, "inbox_reply_rejected", { from: m.sender, subject: m.subject }); toast("Message closed without a reply"); }
+    renderAll();
+  }
+
+  function renderTasks() {
+    document.getElementById("tasksTable").innerHTML = table(S.tasks, [
+      { label: "Sub-agent", render: r => `<span class="mono">${esc(r.sub_agent)}</span>` },
+      { label: "Task", render: r => esc(r.task_type) },
+      { label: "Status", render: r => badge(r.status) },
+      { label: "Summary", render: r => esc(r.summary) },
+      { label: "Created", render: r => fmtDate(r.created) },
+    ]);
+  }
+  function renderAudit() {
+    document.getElementById("auditTable").innerHTML = table(S.audit, [
+      { label: "When", render: r => fmtDate(r.at) },
+      { label: "Actor", render: r => `<span class="mono">${esc(r.actor)}</span>` },
+      { label: "Action", render: r => esc(r.action) },
+      { label: "Detail", render: r => jsonDetail(r.detail) },
+    ]);
+  }
+  function renderReports() {
+    const order = ["current", "1-30", "31-60", "61-90", "90+"];
+    const aging = Object.fromEntries(order.map(b => [b, 0]));
+    S.invoices.forEach(i => aging[bucketOf(i.due_date)] += i.amount);
+    const total = S.invoices.reduce((a, i) => a + i.amount, 0);
+    const max = Math.max(...order.map(b => aging[b]), 1);
+    const fc = { 30: 0, 60: 0, 90: 0 };
+    S.invoices.forEach(i => { const c = S.customers.find(c => c.id === i.cust); const exp = c && c.promise ? c.promise : i.due_date; const d = Math.ceil((new Date(exp) - Date.now()) / DAY); const eff = d < 0 ? 0 : d; if (eff <= 30) fc[30] += i.amount; if (eff <= 60) fc[60] += i.amount; if (eff <= 90) fc[90] += i.amount; });
+    const open = S.disputes.filter(d => d.status !== "resolved");
+    const avgDays = open.length ? open.reduce((a, d) => a + (Date.now() - d.opened) / DAY, 0) / open.length : 0;
+    document.getElementById("reportsBody").innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">Total open AR</div><div class="value">${money(total)}</div><div class="note">${S.invoices.length} open invoices</div></div>
+        <div class="card"><div class="label">Overdue</div><div class="value">${money(total - aging.current)}</div><div class="note">${Math.round((total - aging.current) / total * 100)}% of open AR</div></div>
+        <div class="card"><div class="label">Open disputes</div><div class="value">${open.length}</div><div class="note">${money(open.reduce((a, d) => a + d.amount, 0))} disputed · ${open.filter(d => d.status === "sla_breached").length} past SLA · avg ${avgDays.toFixed(1)} days open</div></div>
+        <div class="card"><div class="label">DSO</div><div class="value small">Not available yet</div><div class="note">Needs a sales-history source — never estimated.</div></div>
+        <div class="card"><div class="label">Collection effectiveness (CEI)</div><div class="value small">Not available yet</div><div class="note">Needs period-over-period receivables.</div></div>
+      </div>
+      <h3>Aging by bucket</h3>
+      <div class="bars">${order.map((b, i) => `<div class="bar b${i + 1}" style="height:${Math.max(2, aging[b] / max * 100)}%"><span>${money(aging[b])}</span></div>`).join("")}</div>
+      <div class="bar-labels">${order.map(b => `<div>${b === "current" ? "Current" : b + " days"}</div>`).join("")}</div>
+      <h3>Cash-inflow forecast (due dates + recorded promises-to-pay)</h3>
+      <div class="cards">
+        <div class="card"><div class="label">Next 30 days</div><div class="value">${money(fc[30])}</div></div>
+        <div class="card"><div class="label">Next 60 days</div><div class="value">${money(fc[60])}</div></div>
+        <div class="card"><div class="label">Next 90 days</div><div class="value">${money(fc[90])}</div></div>
+      </div>
+      <h3>Dunning sequences</h3>
+      <div class="table-wrap">${table(S.invoices.filter(i => bucketOf(i.due_date) !== "current"), [
+        { label: "Invoice", render: r => esc(r.ref) }, { label: "Customer", render: r => esc(custName(r.cust)) }, { label: "Amount", render: r => money(r.amount) },
+        { label: "Bucket", render: r => bucketOf(r.due_date) }, { label: "Step", render: r => esc(stepOf[bucketOf(r.due_date)] || "—") },
+        { label: "Status", render: r => r.disputed ? badge("paused") + " dispute open" : (S.approvals.some(a => a.status === "pending" && a.detail.invoice === r.ref && a.action_type === "dunning_activation") ? badge("pending_activation") : badge("active")) },
+      ])}</div>
+      <h3>Dispute cases</h3>
+      <div class="table-wrap">${table(S.disputes, [
+        { label: "Case", render: r => esc(r.case) }, { label: "Customer", render: r => esc(r.customer) }, { label: "Invoice", render: r => esc(r.invoice) },
+        { label: "Reason", render: r => esc(r.reason) }, { label: "Amount", render: r => money(r.amount) }, { label: "Status", render: r => badge(r.status) },
+        { label: "Opened", render: r => fmtDay(r.opened) }, { label: "Suggested owner", render: r => esc(r.owner) },
+      ])}</div>`;
+  }
+  function renderCustomers() {
+    document.getElementById("customersTable").innerHTML = table(S.customers, [
+      { label: "Customer", render: r => `${esc(r.name)}<br><span class="mono">${esc(r.email)}</span>` },
+      { label: "Open invoices", render: r => S.invoices.filter(i => i.cust === r.id).length },
+      { label: "Exposure", render: r => money(exposureOf(r.id)) },
+      { label: "Credit limit", render: r => money(r.limit) },
+      { label: "Utilization", render: r => Math.round(riskOf(exposureOf(r.id), r.limit).utilization * 100) + "%" },
+      { label: "Risk", render: r => badge(riskOf(exposureOf(r.id), r.limit).level) + (r.hold ? " " + badge("credit hold") : "") + (r.promise ? `<br><span class="mono">promise-to-pay ${fmtDay(r.promise)}</span>` : "") },
+      { label: "Actions", render: r => `<button class="secondary" data-cust="${r.id}">Request limit change</button>` },
+    ]);
+    document.querySelectorAll("#customersTable button[data-cust]").forEach(b => b.addEventListener("click", () => requestLimit(b.dataset.cust)));
+  }
+  function requestLimit(cid) {
+    const c = S.customers.find(x => x.id === cid);
+    modal(`<h2>Request a credit limit change</h2><p><b>${esc(c.name)}</b> — current limit ${money(c.limit)}, exposure ${money(exposureOf(cid))}.</p>
+      <p>In the real Console this creates a <code>credit_limit_change</code> item for your configured approver. Nothing changes in the accounting system until a human approves and applies it.</p>
+      <input id="limitInput" type="number" value="${c.limit + 5000}" step="500">
+      <div class="actions"><button class="secondary" data-close>Cancel</button><button id="limitOk">Submit request</button></div>`);
+    document.getElementById("limitOk").addEventListener("click", () => {
+      const v = Number(document.getElementById("limitInput").value) || c.limit;
+      S.approvals.unshift({ id: id(), action_type: "credit_limit_change", amount: v, approver: CFO, status: "pending", created: now(), detail: { customer: c.name, current_limit: c.limit, proposed_limit: v, requested_by: ME } });
+      log(ME, "credit_limit_change_requested", { customer: c.name, proposed_limit: v, approver: CFO });
+      closeModal(); toast(`Request sent to ${CFO} — see the Approval Queue`); renderAll();
+    });
+  }
+  function renderIntegrations() {
+    document.getElementById("integrationsBody").innerHTML = `
+      <div class="table-wrap">${table([{}], [
+        { label: "Installation", render: () => `Harbor &amp; Pine — Head office<br><span class="mono">inst-4f1c…9a2e</span>` },
+        { label: "Accounting system", render: () => "QuickBooks Online <span class='mono'>(cloud)</span>" },
+        { label: "Connection", render: () => S.qboConnected ? badge("connected") + " <span class='mono'>realm 9130••••2214</span>" : badge("pending") + ` <button id="connectQbo">Connect...</button>` },
+        { label: "Connector service", render: () => badge("running") + " <span class='mono'>v1.0.0 · last heartbeat " + fmtDate(daysAgo(0, 0.05)) + "</span>" },
+        { label: "License", render: () => badge("trial") + ` ${S.licenseDaysLeft} days left <button class="secondary" id="subscribeBtn">Subscribe...</button>` },
+      ])}</div>
+      <h3>Outbox (sent through your own mail server by the connector)</h3>
+      <div class="table-wrap">${table(S.outbox, [{ label: "To", render: r => esc(r.to) }, { label: "Subject", render: r => esc(r.subject) }, { label: "Status", render: r => badge(r.status) }])}</div>
+      <h3>Approval routing (set at install, editable here)</h3>
+      <div class="table-wrap">${table([
+        ["dunning_activation", ME, "always"], ["final_demand_letter", ME, "always"], ["cash_application_match", ME, "below confidence 0.95"], ["unidentified_cash", ME, "always"],
+        ["credit_memo", CFO, "always"], ["write_off", CFO, "always"], ["credit_limit_change", CFO, "always"], ["credit_hold", ME, "always"], ["credit_release", ME, "always"], ["customer_inbox_reply", ME, "draft-only"],
+      ].map(([a, p, t]) => ({ a, p, t })), [{ label: "Action", render: r => `<span class="mono">${r.a}</span>` }, { label: "Approver", render: r => esc(r.p) }, { label: "Rule", render: r => r.t }])}</div>`;
+    const sb = document.getElementById("subscribeBtn"); if (sb) sb.addEventListener("click", () => modal(`<h2>Subscribe</h2><p>In the real Console this opens Stripe Checkout (a Stripe-hosted page). The flat monthly plan renews the licence; an expired licence stops the connector completely — there is no degraded mode.</p><p>This demo does not take payments.</p><div class="actions"><button data-close>Close</button></div>`));
+  }
+  function renderActivity() {
+    const pending = S.approvals.filter(a => a.status === "pending").length;
+    document.getElementById("activityBody").innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="label">Tasks run today</div><div class="value">${S.tasks.length}</div></div>
+        <div class="card"><div class="label">Completed</div><div class="value">${S.tasks.filter(t => t.status === "completed").length}</div></div>
+        <div class="card"><div class="label">Waiting on you</div><div class="value">${pending + S.inbox.length}</div><div class="note">${pending} approvals · ${S.inbox.length} inbox</div></div>
+        <div class="card"><div class="label">Exceptions</div><div class="value">${S.tasks.filter(t => t.status === "exception").length}</div></div>
+        <div class="card"><div class="label">Emails queued</div><div class="value">${S.outbox.filter(o => o.status === "queued").length}</div></div>
+      </div>
+      <h3>By sub-agent</h3>
+      <div class="table-wrap">${table(["invoice_delivery", "cash_application", "collections_dunning", "dispute_deduction", "credit_risk", "customer_inbox", "ar_reporting"].map(s => ({ s, t: S.tasks.filter(t => t.sub_agent === s) })), [
+        { label: "Sub-agent", render: r => `<span class="mono">${r.s}</span>` },
+        { label: "Completed", render: r => r.t.filter(t => t.status === "completed").length },
+        { label: "Needs approval", render: r => r.t.filter(t => t.status === "needs_approval").length },
+        { label: "Exceptions", render: r => r.t.filter(t => t.status === "exception").length },
+      ])}</div>`;
+  }
+  function renderAll() { counts(); renderApprovals(); renderInbox(); renderTasks(); renderAudit(); renderReports(); renderCustomers(); renderIntegrations(); renderActivity(); }
+
+  // modal
+  function modal(html) { document.getElementById("modalBody").innerHTML = html; document.getElementById("modal").classList.add("open"); document.querySelectorAll("#modal [data-close]").forEach(b => b.addEventListener("click", closeModal)); }
+  function closeModal() { document.getElementById("modal").classList.remove("open"); }
+  document.getElementById("modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+
+  // tabs
+  function showTab(name) {
+    document.querySelectorAll("nav .tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll("main.tab-panel").forEach(m => m.classList.toggle("visible", m.id === name));
+  }
+  document.querySelectorAll("nav .tab").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+  document.getElementById("approvalStatusFilter").addEventListener("change", renderApprovals);
+  document.getElementById("resetBtn").addEventListener("click", () => { S = seed(); renderAll(); showTab("approvals"); toast("Demo data reset"); });
+
+  // ------------------------------------------------------------------
+  // Guided tour
+  // ------------------------------------------------------------------
+  const TOUR = [
+    { tab: "approvals", sel: "#approvalsTable", title: "Welcome to the approval queue", text: "This is what your controller sees every morning. Five items are waiting: a first reminder, a credit memo, a credit hold, a near-match payment and an unidentified payment. Each one was proposed by an agent and stopped by your policy. Try approving the $4,200 reminder — then check the Audit Log." },
+    { tab: "approvals", sel: "#approvalsTable", title: "Named approvers, not 'anyone'", text: "The $350 credit memo is routed to the CFO, so your buttons are hidden on that row. Credit memos and write-offs always need a human — no threshold, no exceptions. Thresholds apply to the lower-risk actions." },
+    { tab: "inbox", sel: "#inboxList", title: "Customer inbox, draft-only", text: "The connector pulled three emails from your AR mailbox. One is flagged because of legal wording and will never get an automated reply. Write a reply and press Send: the connector sends it through your own mail server, and the audit log records that you did." },
+    { tab: "tasks", sel: "#tasksTable", title: "What the agents did", text: "Every cycle, the AR agent fans out to its sub-agents: invoice delivery, cash application, collections, disputes, credit risk, inbox and reporting. Green finished on its own; amber is waiting for you; red was parked as an exception." },
+    { tab: "reports", sel: "#reportsBody", title: "Numbers you can audit", text: "Aging, forecast and dispute aging are computed from the open invoices with plain rules. Where a metric would need data that is not connected yet (DSO, CEI), the Console says so instead of guessing." },
+    { tab: "customers", sel: "#customersTable", title: "Credit risk is a recommendation", text: "Atlas Fabrication is at 112% of its limit, so the credit-risk agent recommended a hold — it is sitting in the approval queue. Try 'Request limit change': it creates an approval for the CFO rather than changing anything itself." },
+    { tab: "integrations", sel: "#integrationsBody", title: "How it connects", text: "This company runs QuickBooks Online, connected through Intuit's own consent screen. Dynamics GP customers get a small installed connector that reads their database read-only. Your approval routing and licence live here too." },
+    { tab: "audit", sel: "#auditTable", title: "Everything is logged", text: "Agents and people write to the same log with full detail. If you approved something during this tour, it is at the top. That's the whole idea: AI reads, drafts and prioritises; rules calculate and execute; people approve; everything is recorded." },
+  ];
+  let tourIdx = -1, highlighted = null;
+  function clearHighlight() { if (highlighted) highlighted.classList.remove("tour-highlight"); highlighted = null; }
+  function showStep(i) {
+    clearHighlight();
+    if (i < 0 || i >= TOUR.length) { tourIdx = -1; document.getElementById("tour").classList.remove("open"); return; }
+    tourIdx = i; const s = TOUR[i]; showTab(s.tab);
+    document.getElementById("tourStep").textContent = `Step ${i + 1} of ${TOUR.length}`;
+    document.getElementById("tourTitle").textContent = s.title;
+    document.getElementById("tourText").textContent = s.text;
+    document.getElementById("tourBack").style.visibility = i === 0 ? "hidden" : "visible";
+    document.getElementById("tourNext").textContent = i === TOUR.length - 1 ? "Finish" : "Next";
+    document.getElementById("tour").classList.add("open");
+    highlighted = document.querySelector(s.sel); if (highlighted) { highlighted.classList.add("tour-highlight"); highlighted.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  }
+  document.getElementById("tourBtn").addEventListener("click", () => showStep(0));
+  document.getElementById("tourNext").addEventListener("click", () => showStep(tourIdx + 1));
+  document.getElementById("tourBack").addEventListener("click", () => showStep(tourIdx - 1));
+  document.getElementById("tourSkip").addEventListener("click", () => showStep(-1));
+
+  renderAll();
+  if (!location.hash.includes("notour")) setTimeout(() => showStep(0), 600);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+Qumaxa AR Automation Connector — notice before installation
+
+This program installs a small background service on this computer. It
+connects outbound, over HTTPS only, to the Qumaxa AR Automation Console
+(console.qumaxa.com). Nothing on this computer listens for incoming
+connections.
+
+What it does
+  - Sends a heartbeat so the Console knows the connector is alive and
+    which version is installed.
+  - For Microsoft Dynamics GP: reads open invoices, customers, payments and
+    credit limits from your GP company database (read-only, SQL Server). It
+    never writes to GP.
+  - For QuickBooks Online: nothing on this computer talks to QuickBooks. You
+    connect your company from the Console portal through Intuit's own
+    consent screen.
+  - Optionally, sends and reads email through your own mail server for
+    invoice delivery, reminders and inbox monitoring.
+
+What stays on this computer
+  - Your mailbox and SQL Server credentials (if you provide them) are stored
+    only on this machine, encrypted with Windows data protection, in
+    %ProgramData%\Qumaxa\ARConnector. They are never sent to the Console.
+  - The Console never asks for, and never receives, your accounting system
+    passwords.
+
+Why we ask for your exact software version
+  Support quality depends on it. Knowing the precise version lets us
+  reproduce and fix a problem instead of guessing.
+
+Uninstalling
+  Use "Apps & features" or the Start Menu shortcut. The service is removed;
+  you choose whether the stored configuration is deleted too.
+
+By continuing you confirm you have read this notice. The installer records
+that it was shown (acknowledged_security_notice) for your records and ours.

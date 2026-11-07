@@ -36,14 +36,34 @@ SQL Server installed on the machine running the connector.
 import pyodbc  # pip install pyodbc
 
 
+def _best_driver() -> str:
+    """Prefer ODBC Driver 18, fall back to 17 — both are common on GP hosts."""
+    installed = set(pyodbc.drivers())
+    for name in ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server"):
+        if name in installed:
+            return "{" + name + "}"
+    return "{ODBC Driver 18 for SQL Server}"
+
+
 def build_connection_string(config: dict) -> str:
     """
     config is exactly what installer_skeleton.py's
     collect_gp_connection_config() collects and stores locally (never
     sent to the Console — see that function's docstring).
     """
-    driver = "{ODBC Driver 18 for SQL Server}"
-    base = f"DRIVER={driver};SERVER={config['host']},{config['port']};DATABASE={config['database']};"
+    driver = _best_driver()
+    host = config["host"]
+    port = config.get("port")
+    # A named instance (HOST\INSTANCE) is normally reached through the SQL
+    # Browser service on a dynamic port — appending ",1433" to it fails
+    # outright. Only pin the port when the customer gave one explicitly.
+    server = f"{host},{port}" if port and not (port in (1433, "1433") and "\\" in host) else host
+    # ODBC Driver 18 defaults to Encrypt=yes and rejects the self-signed
+    # certificate nearly every on-prem GP SQL Server has; without
+    # TrustServerCertificate=yes the connection never works at all
+    # (first found on the live test of 2026-09-12). The connection is
+    # still encrypted — only the certificate chain check is relaxed.
+    base = f"DRIVER={driver};SERVER={server};DATABASE={config['database']};TrustServerCertificate=yes;"
     if config.get("windows_auth", True):
         return base + "Trusted_Connection=yes;"
     return base + f"UID={config['username']};PWD={config['password']};"
