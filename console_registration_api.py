@@ -1958,7 +1958,11 @@ async def portal_installations(
         """,
         user["tenant_id"],
     )
-    return [dict(r) for r in rows]
+    # payments_live: only a live Stripe key can take real money. Unset or
+    # test keys make the portal show a "payments open soon" note instead of
+    # a Subscribe button that would fail or run a test-mode checkout.
+    payments_live = stripe_configured() and STRIPE_SECRET_KEY.startswith("sk_live_")
+    return [dict(r, payments_live=payments_live) for r in rows]
 
 
 @app.post("/v1/portal/installations/{installation_id}/billing/checkout-session")

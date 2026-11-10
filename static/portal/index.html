@@ -179,6 +179,10 @@
   <div class="toolbar">
     <button id="refreshIntegrations" class="secondary">Refresh</button>
   </div>
+  <p id="paymentsNote" style="display:none; color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    Online payment is not switched on yet, so there is no Subscribe button. To get a paid plan now, email
+    <a href="mailto:altaf.khan@qumaxa.com">altaf.khan@qumaxa.com</a> and we will set it up by hand; your trial keeps running meanwhile.
+  </p>
   <div id="integrationsTable"></div>
 </main>
 
@@ -422,6 +426,7 @@ function isQboErpType(erpType) {
 
 async function loadIntegrations() {
   const rows = await api("/v1/portal/installations");
+  document.getElementById("paymentsNote").style.display = rows.some(r => r.payments_live === false) ? "" : "none";
   document.getElementById("integrationsTable").innerHTML = table(rows, [
     { label: "ERP", render: r => r.erp_type ? `${r.erp_type} ${r.erp_version || ""}` : "—" },
     { label: "License", render: r => badge(r.license_status) },
@@ -432,6 +437,9 @@ async function loadIntegrations() {
       } },
     { label: "Billing", render: r => {
         if (r.plan === "paid" && r.license_status !== "expired") return "Active subscription";
+        if (r.payments_live === false) {
+          return `<span style="color: var(--muted)">Payments open soon — to subscribe now, email <a href="mailto:altaf.khan@qumaxa.com">altaf.khan@qumaxa.com</a></span>`;
+        }
         return `<button class="secondary subscribe-btn" data-id="${r.installation_id}">Subscribe...</button>`;
       } },
     { label: "Connector ver.", render: r => r.connector_version || "—" },
