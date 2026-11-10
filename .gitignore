@@ -19,3 +19,4 @@ installer/build/
 installer/dist/
 installer/build-log.txt
 installer/dist*/
+installer/release-log.txt
