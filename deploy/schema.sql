@@ -55,6 +55,8 @@ create table installations (
     demo_end            timestamptz not null,
     plan                text not null default 'trial',
     payment_date        timestamptz,
+    stripe_customer_id  text,
+    stripe_subscription_id text,
     license_status      text not null default 'trial',
     renewal_reminders_sent int not null default 0,
     last_reminder_sent_at   timestamptz,

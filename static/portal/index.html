@@ -179,6 +179,10 @@
   <div class="toolbar">
     <button id="refreshIntegrations" class="secondary">Refresh</button>
   </div>
+  <p id="paymentsNote" style="display:none; color: var(--muted); font-size: 12.5px; margin: 0 0 12px;">
+    Online payment is not switched on yet, so there is no Subscribe button. To get a paid plan now, email
+    <a href="mailto:altaf.khan@qumaxa.com">altaf.khan@qumaxa.com</a> and we will set it up by hand; your trial keeps running meanwhile.
+  </p>
   <div id="integrationsTable"></div>
 </main>
 
@@ -422,9 +426,22 @@ function isQboErpType(erpType) {
 
 async function loadIntegrations() {
   const rows = await api("/v1/portal/installations");
+  document.getElementById("paymentsNote").style.display = rows.some(r => r.payments_live === false) ? "" : "none";
   document.getElementById("integrationsTable").innerHTML = table(rows, [
     { label: "ERP", render: r => r.erp_type ? `${r.erp_type} ${r.erp_version || ""}` : "—" },
     { label: "License", render: r => badge(r.license_status) },
+    { label: "Plan", render: r => {
+        const plan = r.plan === "paid" ? "Paid" : "Trial";
+        const until = r.demo_end ? ` — through ${fmtDate(r.demo_end)}` : "";
+        return plan + until;
+      } },
+    { label: "Billing", render: r => {
+        if (r.plan === "paid" && r.license_status !== "expired") return "Active subscription";
+        if (r.payments_live === false) {
+          return `<span style="color: var(--muted)">Payments open soon — to subscribe now, email <a href="mailto:altaf.khan@qumaxa.com">altaf.khan@qumaxa.com</a></span>`;
+        }
+        return `<button class="secondary subscribe-btn" data-id="${r.installation_id}">Subscribe...</button>`;
+      } },
     { label: "Connector ver.", render: r => r.connector_version || "—" },
     { label: "QuickBooks", render: r => {
         if (!isQboErpType(r.erp_type)) return "—";
@@ -435,6 +452,8 @@ async function loadIntegrations() {
   ]);
   document.querySelectorAll(".connect-qbo-btn").forEach(btn =>
     btn.addEventListener("click", () => connectQbo(btn.dataset.id)));
+  document.querySelectorAll(".subscribe-btn").forEach(btn =>
+    btn.addEventListener("click", () => subscribeBilling(btn.dataset.id)));
 }
 
 async function connectQbo(installationId) {
@@ -444,6 +463,15 @@ async function connectQbo(installationId) {
     setStatus("Opened QuickBooks' consent screen in a new tab — log in there with your QuickBooks admin, then refresh this list.");
   } catch (e) {
     setStatus("Couldn't start the QuickBooks connection: " + e.message, true);
+  }
+}
+
+async function subscribeBilling(installationId) {
+  try {
+    const result = await api(`/v1/portal/installations/${installationId}/billing/checkout-session`, { method: "POST" });
+    window.location.href = result.checkout_url;
+  } catch (e) {
+    setStatus("Couldn't start checkout: " + e.message, true);
   }
 }
 
@@ -595,6 +623,18 @@ document.getElementById("activateBtn").addEventListener("click", async () => {
     // us who's logged in; otherwise it 401s via api()'s own handling and
     // we just show the login screen.
     api("/v1/portal/me").then(r => showTabsUI(r.email)).catch(() => showLogin());
+
+    // Stripe Checkout's success/cancel redirect lands here — just a
+    // friendly heads-up. The webhook, not this redirect, is what
+    // actually activated the subscription, so it may take a few
+    // seconds to show up in the Integrations tab.
+    const billing = params.get("billing");
+    if (billing === "success") {
+      setStatus("Payment received — activation usually shows up within a few seconds. Refresh the Integrations tab if it's not there yet.");
+    } else if (billing === "cancelled") {
+      setStatus("Checkout was cancelled — no charge was made.");
+    }
+    if (billing) history.replaceState(null, "", window.location.pathname);
   }
 })();
 </script>

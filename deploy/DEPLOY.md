@@ -141,6 +141,16 @@ schedule" pattern as the license watcher, sharing the same container and
 Install all three cron entries with `crontab -e` (or `(crontab -l; echo '...') | crontab -`
 as used during initial setup).
 
+## Releasing a new version (preferred)
+
+From a local checkout, `deploy/release.sh [commit] [host]` does the whole
+cycle: pg_dump backup to `/opt/backups`, upload the commit's tracked files
+over `/opt/console` (untracked server files such as `deploy/.env` and the
+OCRDocFlow nginx confs are left alone), apply any `deploy/migration_*.sql`
+not yet applied, rebuild only the `api` container, restart nginx, verify
+`/admin/`, `/portal/` and `/openapi.json`. It never runs `docker compose down`.
+The droplet's current address since the 2026-11-10 restore is 165.22.240.27.
+
 ## Applying a schema change to an already-running database
 
 `schema.sql` only applies automatically on the `db` container's *first*
@@ -164,3 +174,13 @@ over instead.
 Also: recreating the `api` container after a code change leaves nginx
 holding a stale internal IP for it (502 Bad Gateway) — always follow with
 `docker compose restart nginx`.
+
+## Shared with OCRDocFlow
+
+This nginx also fronts `ocrdocflow.qumaxa.com` on the same droplet rather
+than a second nginx running for it — see `../../ocrdocflow/deploy/DEPLOY.md`.
+That's why `docker-compose.yml`'s nginx service mounts
+`/opt/ocrdocflow/frontend/dist`, and why `nginx/` on the droplet holds
+`ocrdocflow.conf` / `ocrdocflow-ssl.conf` (copied in from the OCRDocFlow
+repo, not tracked here). If OCRDocFlow isn't deployed on the box, Docker
+just creates that mount path empty and nginx starts normally.

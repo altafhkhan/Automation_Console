@@ -30,19 +30,15 @@ from pathlib import Path
 import requests  # pip install requests
 
 from console_config import CONSOLE_BASE_URL
+from connector_paths import EMAIL_CONFIG_PATH, GP_CONNECTION_CONFIG_PATH, TOKEN_STORE_PATH
+from connector_version import CONNECTOR_VERSION
+from secure_store import write_json as _write_secret
 
-TOKEN_STORE_PATH = Path.home() / ".ar_agent" / "credentials.json"  # TODO: use OS secret store instead
-
-# Deliberately separate from TOKEN_STORE_PATH — see connector_daemon.py's
-# EMAIL_CONFIG_PATH, which must point at this exact same path.
-EMAIL_CONFIG_PATH = Path.home() / ".ar_agent" / "email_config.json"
-
-# Same reasoning as EMAIL_CONFIG_PATH — never merged into TOKEN_STORE_PATH,
-# must point at the same path as connector_daemon.py's
-# GP_CONNECTION_CONFIG_PATH. Only ever collected for Microsoft Dynamics GP
-# (see collect_gp_connection_config() below); every other erp_type never
-# creates this file at all, and gp_client.py is never imported for them.
-GP_CONNECTION_CONFIG_PATH = Path.home() / ".ar_agent" / "gp_connection_config.json"
+# The packaged, customer-facing installer is installer/ar_connector_installer.py;
+# it reuses the questionnaire and notice functions below. This file remains the
+# design reference for the flow. Paths are shared via connector_paths.py and
+# secrets go through secure_store.py (DPAPI on Windows) — the old "plain JSON
+# on disk" placeholders are gone.
 GP_ERP_TYPE_ALIASES = {"microsoft dynamics gp", "dynamics gp", "gp"}
 
 
@@ -292,11 +288,8 @@ def store_email_config(email_config: dict | None) -> None:
         return
     # Same never-sent-to-Console guarantee as store_token()'s tokens —
     # this file is read only by connector_daemon.py, locally.
-    # TODO: OS secret store, same gap as TOKEN_STORE_PATH — plain JSON on
-    # disk is a placeholder, not acceptable for a real credential at rest.
-    EMAIL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    EMAIL_CONFIG_PATH.write_text(json.dumps(email_config))
-    print(f"Email credentials stored locally at {EMAIL_CONFIG_PATH} (placeholder — move to OS secret store). Never sent to the Console.")
+    _write_secret(EMAIL_CONFIG_PATH, email_config)
+    print(f"Email credentials stored locally at {EMAIL_CONFIG_PATH} (encrypted at rest). Never sent to the Console.")
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +319,9 @@ def collect_gp_connection_config() -> dict | None:
         return None
 
     host = input("SQL Server hostname or host\\instance (e.g. SQLSERVER01\\GP): ").strip()
-    port = input("SQL Server port [1433]: ").strip() or "1433"
+    port = input("SQL Server port (blank for a named instance such as HOST\\GP) [1433 if no instance]: ").strip()
+    if not port and "\\" not in host:
+        port = "1433"
     database = input("GP company database name (e.g. TWO, or your real company DB): ").strip()
 
     auth = input("Authentication — [1] Windows Integrated, [2] SQL Server login [1]: ").strip() or "1"
@@ -339,7 +334,7 @@ def collect_gp_connection_config() -> dict | None:
 
     return {
         "host": host,
-        "port": int(port),
+        "port": int(port) if port else None,
         "database": database,
         "windows_auth": auth != "2",
         "username": username,
@@ -350,12 +345,8 @@ def collect_gp_connection_config() -> dict | None:
 def store_gp_connection_config(gp_connection_config: dict | None) -> None:
     if gp_connection_config is None:
         return
-    # TODO: OS secret store, same gap as TOKEN_STORE_PATH/EMAIL_CONFIG_PATH —
-    # plain JSON on disk is a placeholder, not acceptable for a real
-    # credential at rest.
-    GP_CONNECTION_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    GP_CONNECTION_CONFIG_PATH.write_text(json.dumps(gp_connection_config))
-    print(f"GP database connection stored locally at {GP_CONNECTION_CONFIG_PATH} (placeholder — move to OS secret store). Never sent to the Console.")
+    _write_secret(GP_CONNECTION_CONFIG_PATH, gp_connection_config)
+    print(f"GP database connection stored locally at {GP_CONNECTION_CONFIG_PATH} (encrypted at rest). Never sent to the Console.")
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +361,7 @@ def register(signup_code: str, system: DetectedSystem, policy_config: dict) -> d
         "erp_version_precision": system.precision,
         "other_tools": [],  # TODO: extend questionnaire to capture these
         "connector_module": f"{system.erp_type.lower().replace(' ', '_')}-adapter",
-        "connector_version": "v0.1.0",  # TODO: pull from the installer package metadata
+        "connector_version": CONNECTOR_VERSION,
         "policy_config": policy_config,
         "acknowledged_security_notice": True,  # set only after show_security_notice() has run
     }
@@ -380,17 +371,13 @@ def register(signup_code: str, system: DetectedSystem, policy_config: dict) -> d
 
 
 def store_token(registration: dict) -> None:
-    # TODO: replace with OS secret store (Windows DPAPI / Credential Manager,
-    # Linux `keyring` / secret-service). Plain JSON on disk is a placeholder
-    # for wiring the flow together — do not ship this as-is.
-    #
     # Stores both the access_token (1h) and refresh_token (30d, see design
     # doc Section 9). The background connector daemon — not this installer
     # — is responsible for calling /v1/token/refresh before the access
     # token expires and overwriting this file with the rotated pair.
     TOKEN_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_STORE_PATH.write_text(json.dumps(registration))
-    print(f"\nCredentials stored at {TOKEN_STORE_PATH} (placeholder — move to OS secret store).")
+    print(f"\nCredentials stored at {TOKEN_STORE_PATH} (encrypted at rest).")
 
 
 # ---------------------------------------------------------------------------

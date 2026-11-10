@@ -40,6 +40,9 @@ services:
       QBO_CLIENT_SECRET: ${QBO_CLIENT_SECRET:-}
       QBO_REDIRECT_URI: ${QBO_REDIRECT_URI:-https://console.qumaxa.com/v1/qbo/oauth/callback}
       QBO_ENVIRONMENT: ${QBO_ENVIRONMENT:-sandbox}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +65,10 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
       - certbot-webroot:/var/www/certbot:ro
       - certbot-certs:/etc/letsencrypt:ro
+      # OCRDocFlow's built frontend - this nginx also fronts
+      # ocrdocflow.qumaxa.com (see ../../ocrdocflow/deploy/DEPLOY.md) rather
+      # than running a second nginx for it.
+      - /opt/ocrdocflow/frontend/dist:/var/www/ocrdocflow:ro
 
 volumes:
   certbot-webroot:

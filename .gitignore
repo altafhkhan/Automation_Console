@@ -4,7 +4,6 @@
 deploy/.env
 
 # Local tool config, not part of the project
-.claude/
 
 # Python
 __pycache__/
@@ -13,3 +12,11 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Connector installer build outputs (installer/build.ps1)
+installer/.venv/
+installer/build/
+installer/dist/
+installer/build-log.txt
+installer/dist*/
+installer/release-log.txt
