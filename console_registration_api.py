@@ -1984,27 +1984,34 @@ async def portal_billing_checkout(
 
     installation_ids = await _tenant_installation_ids(conn, user["tenant_id"])
     installation = await conn.fetchrow(
-        "select installation_id, stripe_customer_id from installations where installation_id = $1 and installation_id = any($2)",
+        "select installation_id, stripe_customer_id, plan, license_status from installations where installation_id = $1 and installation_id = any($2)",
         installation_id, installation_ids,
     )
     if not installation:
         raise HTTPException(404, "No installation with that id for your tenant")
 
-    # Reuse the same Stripe Customer across repeat/renewed checkouts for
-    # this installation, rather than creating a new one every time.
-    customer_id = installation["stripe_customer_id"]
-    if not customer_id:
-        customer = stripe.Customer.create(
-            email=user["email"],
-            metadata={"installation_id": installation_id, "tenant_id": str(user["tenant_id"])},
-        )
-        customer_id = customer.id
-        await conn.execute(
-            "update installations set stripe_customer_id = $1 where installation_id = $2",
-            customer_id, installation_id,
-        )
+    # Same rule the portal uses to show "Active subscription" instead of
+    # the Subscribe button — enforced here too, so a stale tab or a direct
+    # API call can't start a second subscription (and a second monthly
+    # charge) for an installation that is already paying.
+    if installation["plan"] == "paid" and installation["license_status"] != "expired":
+        raise HTTPException(409, "This installation already has an active subscription")
 
     try:
+        # Reuse the same Stripe Customer across repeat/renewed checkouts for
+        # this installation, rather than creating a new one every time.
+        customer_id = installation["stripe_customer_id"]
+        if not customer_id:
+            customer = stripe.Customer.create(
+                email=user["email"],
+                metadata={"installation_id": installation_id, "tenant_id": str(user["tenant_id"])},
+            )
+            customer_id = customer.id
+            await conn.execute(
+                "update installations set stripe_customer_id = $1 where installation_id = $2",
+                customer_id, installation_id,
+            )
+
         session = stripe.checkout.Session.create(
             customer=customer_id,
             mode="subscription",
