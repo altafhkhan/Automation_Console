@@ -52,7 +52,8 @@ your accounting system lives. This guide covers the Connector.
 ## Day-to-day
 
 - **Status** — Start Menu → *AR Connector status* (shows service state,
-  last heartbeat, license status, last error).
+  last heartbeat, license status, last error). It asks for administrator
+  approval, because the configuration folder is locked to administrators.
 - **Change GP or mailbox settings** — Start Menu → *AR Connector configure*.
   The service restarts itself afterwards.
 - **Change approvers or thresholds** — in the Console, not on this PC.

@@ -638,7 +638,10 @@ def cmd_setup() -> None:
         cmd_install()
 
 
-NEEDS_ADMIN = {"setup", "install", "configure", "upgrade", "uninstall", "purge"}
+# `status` needs admin too: the configuration folder is readable only by
+# Administrators and SYSTEM (tighten_folder_acl), so an unelevated run
+# would wrongly report "not installed" — found in the live test 2026-11-10.
+NEEDS_ADMIN = {"setup", "install", "configure", "upgrade", "uninstall", "purge", "status"}
 
 COMMANDS = {
     "setup": cmd_setup,
