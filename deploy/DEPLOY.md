@@ -141,6 +141,16 @@ schedule" pattern as the license watcher, sharing the same container and
 Install all three cron entries with `crontab -e` (or `(crontab -l; echo '...') | crontab -`
 as used during initial setup).
 
+## Releasing a new version (preferred)
+
+From a local checkout, `deploy/release.sh [commit] [host]` does the whole
+cycle: pg_dump backup to `/opt/backups`, upload the commit's tracked files
+over `/opt/console` (untracked server files such as `deploy/.env` and the
+OCRDocFlow nginx confs are left alone), apply any `deploy/migration_*.sql`
+not yet applied, rebuild only the `api` container, restart nginx, verify
+`/admin/`, `/portal/` and `/openapi.json`. It never runs `docker compose down`.
+The droplet's current address since the 2026-11-10 restore is 165.22.240.27.
+
 ## Applying a schema change to an already-running database
 
 `schema.sql` only applies automatically on the `db` container's *first*
