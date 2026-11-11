@@ -103,6 +103,7 @@
 
 <main id="tenants" class="tab-panel">
   <div class="toolbar">
+    <button id="addCustomerBtn">Add Customer</button>
     <button id="refreshTenants" class="secondary">Refresh</button>
   </div>
   <div id="tenantsTable"></div>
@@ -293,6 +294,10 @@ async function loadTenants() {
   document.getElementById("tenantsTable").innerHTML = table(tenants, [
     { label: "Company", render: r => r.company_name || "—" },
     { label: "Email", render: r => r.signup_email || "—" },
+    { label: "Signup code", render: r => {
+        if (r.installation_id) return "used";
+        return r.signup_code ? `<span class="mono">${escapeHtml(r.signup_code)}</span>` : "—";
+      } },
     { label: "Installation", render: r => shortId(r.installation_id) },
     { label: "ERP", render: r => r.erp_type ? `${r.erp_type} ${r.erp_version || ""}` : "—" },
     { label: "License", render: r => badge(r.license_status) },
@@ -327,6 +332,28 @@ async function loadTenants() {
       .map(r => `<option value="${r.installation_id}">${r.company_name} — ${String(r.installation_id).slice(0,8)}</option>`)
       .join("");
     sel.value = current;
+  }
+}
+
+async function addCustomer() {
+  const companyName = (prompt("Customer's company name:") || "").trim();
+  if (!companyName) return;
+  const email = (prompt(`Contact email at ${companyName} (who will run the installer):`) || "").trim();
+  if (!email) return;
+  try {
+    const result = await api("/v1/admin/tenants", {
+      method: "POST",
+      body: JSON.stringify({ company_name: companyName, email }),
+    });
+    prompt(
+      "Customer added. Copy this signup code and send it to them yourself together with " +
+      "the AR Connector installer — nothing is sent automatically. The installer asks for it at step 3:",
+      result.signup_code,
+    );
+    setStatus(`Added "${companyName}" — signup code stays visible in the list until the installer uses it`);
+    loadTenants();
+  } catch (e) {
+    setStatus("Couldn't add customer: " + e.message, true);
   }
 }
 
@@ -662,6 +689,7 @@ document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => showTab(btn.dataset.tab));
 });
 
+document.getElementById("addCustomerBtn").addEventListener("click", addCustomer);
 document.getElementById("refreshTenants").addEventListener("click", () => loadTenants().catch(e => setStatus(String(e.message), true)));
 document.getElementById("refreshTasks").addEventListener("click", loadTasks);
 document.getElementById("refreshApprovals").addEventListener("click", loadApprovals);

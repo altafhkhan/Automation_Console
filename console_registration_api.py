@@ -249,6 +249,11 @@ class CreditLimitSetRequest(BaseModel):
     credit_limit: float = Field(ge=0)
 
 
+class AdminTenantCreateRequest(BaseModel):
+    company_name: str = Field(min_length=1)
+    email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class TenantUserInviteRequest(BaseModel):
     email: str
     role: str = ""
@@ -351,24 +356,37 @@ async def _require_installation(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+async def _create_tenant_with_signup_code(
+    conn: asyncpg.Connection, company_name: str, email: str, source: str
+) -> tuple[Any, str]:
+    """
+    A tenant row plus the one-time signup code its installer will
+    register with — shared by the public lead form and the Admin
+    console's "Add Customer" button so both produce the same thing.
+    """
+    async with conn.transaction():
+        tenant_id = await conn.fetchval(
+            """
+            insert into tenants (company_name, signup_email, lead_source)
+            values ($1, $2, $3)
+            returning tenant_id
+            """,
+            company_name,
+            email,
+            source,
+        )
+        signup_code = secrets.token_hex(8)
+        await conn.execute(
+            "insert into signup_codes (code, tenant_id) values ($1, $2)",
+            signup_code,
+            tenant_id,
+        )
+    return tenant_id, signup_code
+
+
 @app.post("/v1/leads")
 async def create_lead(req: LeadRequest, conn: asyncpg.Connection = Depends(get_db)):
-    tenant_id = await conn.fetchval(
-        """
-        insert into tenants (company_name, signup_email, lead_source)
-        values ($1, $2, $3)
-        returning tenant_id
-        """,
-        req.company_name,
-        req.email,
-        req.source,
-    )
-    signup_code = secrets.token_hex(8)
-    await conn.execute(
-        "insert into signup_codes (code, tenant_id) values ($1, $2)",
-        signup_code,
-        tenant_id,
-    )
+    tenant_id, signup_code = await _create_tenant_with_signup_code(conn, req.company_name, req.email, req.source)
 
     # TODO: send email with install-link + signup_code via your mail provider.
     # send_install_email(req.email, signup_code)
@@ -834,7 +852,11 @@ async def admin_list_tenants(conn: asyncpg.Connection = Depends(get_db), _: None
         select t.tenant_id, t.company_name, t.signup_email, t.lead_source, t.created_at,
                i.installation_id, i.erp_type, i.erp_version, i.license_status, i.plan,
                i.install_date, i.last_heartbeat_at, i.demo_end, i.connector_version,
-               qc.connected_at as qbo_connected_at
+               qc.connected_at as qbo_connected_at,
+               -- Still present = the installer hasn't registered yet
+               -- (/v1/registrations deletes it on use).
+               (select sc.code from signup_codes sc where sc.tenant_id = t.tenant_id
+                order by sc.created_at desc limit 1) as signup_code
         from tenants t
         left join installations i on i.tenant_id = t.tenant_id
         left join qbo_connections qc on qc.installation_id = i.installation_id
@@ -842,6 +864,25 @@ async def admin_list_tenants(conn: asyncpg.Connection = Depends(get_db), _: None
         """
     )
     return [dict(r) for r in rows]
+
+
+@app.post("/v1/admin/tenants")
+async def admin_create_tenant(
+    req: AdminTenantCreateRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: None = Depends(_require_admin),
+):
+    """
+    The operator-side twin of /v1/leads: registers a customer company by
+    hand and returns its signup code for the operator to relay (nothing
+    is emailed — same reason as /v1/leads and the portal invite link).
+    The customer's installer then fills in everything else at
+    /v1/registrations.
+    """
+    tenant_id, signup_code = await _create_tenant_with_signup_code(
+        conn, req.company_name.strip(), req.email.strip(), "admin_console"
+    )
+    return {"tenant_id": str(tenant_id), "signup_code": signup_code}
 
 
 @app.get("/v1/admin/audit-log")
