@@ -34,6 +34,7 @@
   #status { font-size: 12px; color: var(--muted); }
   #status.err { color: var(--danger); }
   #status.ok { color: var(--ok); }
+  .form-error { color: var(--danger); font-size: 13px; min-height: 18px; max-width: 420px; text-align: center; }
   nav {
     display: flex; gap: 4px; padding: 10px 20px 0; border-bottom: 1px solid var(--border); background: var(--panel);
   }
@@ -89,12 +90,14 @@
   <p>Choose a password (at least 8 characters) to finish setting up your access.</p>
   <input id="activatePassword" type="password" placeholder="New password">
   <button id="activateBtn">Activate</button>
+  <div id="activateError" class="form-error"></div>
 </div>
 
 <div id="loginScreen">
   <input id="emailInput" type="email" placeholder="Work email">
   <input id="passwordInput" type="password" placeholder="Password">
   <button id="loginBtn">Log in</button>
+  <div id="loginError" class="form-error"></div>
   <p>Access is by invitation from your account administrator. Contact them if you don't have login details yet.</p>
 </div>
 
@@ -233,7 +236,7 @@ async function api(path, options) {
   const headers = {};
   if (opts.body) headers["Content-Type"] = "application/json";
   const resp = await fetch(path, { method: opts.method || "GET", headers, body: opts.body, credentials: "include" });
-  if (resp.status === 401) {
+  if (resp.status === 401 && !opts.public) {
     setStatus("Session expired — please log in again", true);
     showLogin();
     throw new Error("unauthorized");
@@ -242,6 +245,18 @@ async function api(path, options) {
     throw new Error(`${resp.status} ${await resp.text()}`);
   }
   return resp.json();
+}
+
+// The server's own "detail" text out of an api() error, for messages
+// shown to the person rather than logged.
+function errorDetail(e) {
+  const m = /^\d+ (.*)$/s.exec(e.message || "");
+  if (!m) return e.message || "Something went wrong";
+  try { return JSON.parse(m[1]).detail || m[1]; } catch (_) { return m[1]; }
+}
+
+function setFormError(id, text) {
+  document.getElementById(id).textContent = text || "";
 }
 
 function setStatus(text, isErr) {
@@ -573,17 +588,28 @@ function showTabsUI(email) {
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("emailInput").value.trim();
   const password = document.getElementById("passwordInput").value;
-  if (!email || !password) return;
+  if (!email || !password) {
+    setFormError("loginError", "Enter your work email and password");
+    return;
+  }
+  setFormError("loginError", "");
   try {
     const result = await api("/v1/portal/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+      public: true,
     });
     setStatus("Logged in");
     showTabsUI(result.email);
   } catch (e) {
-    setStatus("Could not log in: " + e.message, true);
+    setStatus("");
+    setFormError("loginError", errorDetail(e) +
+      ". If you were sent an invite link, open that link first to set your password.");
   }
+});
+
+document.getElementById("passwordInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("loginBtn").click();
 });
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -597,19 +623,21 @@ document.getElementById("activateBtn").addEventListener("click", async () => {
   const params = new URLSearchParams(window.location.search);
   const inviteToken = params.get("invite");
   if (!password || password.length < 8) {
-    setStatus("Password must be at least 8 characters", true);
+    setFormError("activateError", "Password must be at least 8 characters");
     return;
   }
+  setFormError("activateError", "");
   try {
     await api("/v1/portal/invite/accept", {
       method: "POST",
       body: JSON.stringify({ invite_token: inviteToken, password }),
+      public: true,
     });
     setStatus("Account activated — log in below");
     history.replaceState(null, "", window.location.pathname);
     showLogin();
   } catch (e) {
-    setStatus("Could not activate: " + e.message, true);
+    setFormError("activateError", errorDetail(e));
   }
 });
 
@@ -620,9 +648,9 @@ document.getElementById("activateBtn").addEventListener("click", async () => {
     document.getElementById("activateScreen").style.display = "flex";
   } else {
     // If a valid session cookie already exists, this succeeds and tells
-    // us who's logged in; otherwise it 401s via api()'s own handling and
-    // we just show the login screen.
-    api("/v1/portal/me").then(r => showTabsUI(r.email)).catch(() => showLogin());
+    // us who's logged in; otherwise it 401s and we just show the login
+    // screen — quietly, since a first-time visitor has no session to expire.
+    api("/v1/portal/me", { public: true }).then(r => showTabsUI(r.email)).catch(() => showLogin());
 
     // Stripe Checkout's success/cancel redirect lands here — just a
     // friendly heads-up. The webhook, not this redirect, is what
